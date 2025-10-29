@@ -13,7 +13,11 @@ If you need to use a custom configuration, copy the sample config:
 cp probes.toml ~/.edf/probes.toml
 ```
 
-### 2. Load the Dataset
+### 2. Run the compute node with environment: 
+```bash
+  srun -A infra01 --environment=$HOME/.edf/probes.toml --pty bash
+```
+### 3. Load the Dataset
 
 Currently, only the `sms_spam` dataset is supported. Run:
 
@@ -23,7 +27,7 @@ python load_datasets.py
 
 This will download and cache the dataset in the expected format.
 
-### 3. Run the Caching Script
+### 4. Run the Caching Script
 
 To extract and cache model activations for the dataset, run:
 
@@ -35,7 +39,7 @@ bash cache.sh
 > chmod +x cache.sh
 > ```
 
-### 4. Post-process the Cached Data
+### 5. Post-process the Cached Data
 
 Aggregate and organize the activations for probe training:
 
@@ -43,7 +47,7 @@ Aggregate and organize the activations for probe training:
 bash postprocess.sh
 ```
 
-### 5. Train Probes
+### 6. Train Probes
 
 Train linear probes on the cached activations:
 
