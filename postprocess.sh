@@ -1,4 +1,4 @@
-python3 MERA-steering/src/cache/cache_postprocess.py \
+python3 src/cache/cache_postprocess.py \
     --save_dir "$SCRATCH/mera-runs/" \
     --save_cache_key "1000" \
     --dataset_names "sms_spam" \

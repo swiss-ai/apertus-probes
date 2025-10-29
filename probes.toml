@@ -1,0 +1,30 @@
+image = "${SCRATCH}/ce-images/probes+latest.sqsh"
+
+# Mount exactly what you need (you can also use ${SCRATCH}:${SCRATCH} style)
+mounts = [
+  "/iopsstor",                         # datasets & caches
+  "/capstor",                          # checkpoints or project data
+  "/users"       # your code (optional; if not baked in)
+]
+workdir = "/users/${USER}/projects/apertus-probes"
+writable = true
+
+[annotations]
+# Enable OFI/NCCL hook for Slingshot (recommended for Clariden, CUDA 12)
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
+
+[env]
+# put temps & caches on scratch
+TMPDIR = "/iopsstor/scratch/cscs/${USER}/tmp"
+HF_HOME = "/iopsstor/scratch/cscs/${USER}/hf_cache"
+HF_DATASETS_CACHE = "/iopsstor/scratch/cscs/${USER}/hf_cache/datasets"
+TRANSFORMERS_CACHE = "/iopsstor/scratch/cscs/${USER}/hf_cache/models"
+PYTHONPATH = "/users/${USER}/projects/apertus-probes/MERA-steering:/users/${USER}/projects/apertus-probes/MERA-steering/src"
+
+# NCCL / PyTorch niceties
+NCCL_DEBUG = "INFO"
+CUDA_CACHE_DISABLE = "1"
+TORCH_NCCL_ASYNC_ERROR_HANDLING = "1"
+MPICH_GPU_SUPPORT_ENABLED = "0"
+

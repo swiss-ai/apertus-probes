@@ -7,7 +7,8 @@ os.makedirs(cache_dir, exist_ok=True)
 # Map HF dataset IDs -> on-disk folder names your code expects
 datasets_to_cache = {
     # name used by your project : HF hub id
-    "sms_spam":         "ucirvine/sms_spam"
+    "sms_spam":         "ucirvine/sms_spam",
+    # "mmlu": "cais/mmlu"     
 }
 
 for name, hf_id in datasets_to_cache.items():

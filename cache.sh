@@ -1,4 +1,4 @@
-python3 MERA-steering/src/cache/cache_run.py \
+python3 src/cache/cache_run.py \
     --cache_dir "$SCRATCH/mera-cache/datasets/" \
     --save_dir "$SCRATCH/mera-runs/" \
     --model_name "swiss-ai/Apertus-8B-Instruct-2509" \
