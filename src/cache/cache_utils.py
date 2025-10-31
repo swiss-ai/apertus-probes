@@ -151,7 +151,10 @@ def calculate_cross_entropy_error(
 ) -> List[Union[np.ndarray, torch.Tensor]]:
     """Calculate cross-entropy error for each position in the sequence."""
     errors = []
-
+    #FIXME ONLY WORKS FOR BATCH_SIZE = 1
+    # softmax_scores is of size y_true / batch_size. It does not match to y_true
+    #if batchsize == 1, softmax_scores shape = (seq_len, num_classes)
+    #else softmax_scores shape = (batch_size, seq_len, num_classes)
     for softmax, true_label in zip(softmax_scores, y_true):
         seq_len = softmax.shape[0]
         num_classes = softmax.shape[1]
