@@ -294,14 +294,13 @@ class DatasetHandler:
             ds = ds.filter(lambda x: x["category"] in self.dataset_info["SUB_TASKS"])
         elif self.config.dataset_name_hf == "mmlu":
             if self.config.dataset_name == "mmlu_professional":
-                if self.config.dataset_name == "mmlu_professional":
-                    # Filter all splits
-                    subsets = []
-                    for split in ["test", "validation", "dev"]:
-                        if split in ds:
-                            filtered = ds[split].filter(lambda x: x["subject"].startswith("professional_"))
-                            subsets.append(filtered)
-                    ds = concatenate_datasets(subsets)
+                # Filter all splits
+                subsets = []
+                for split in ["test", "validation", "dev"]:
+                    if split in ds:
+                        filtered = ds[split].filter(lambda x: x["subject"].startswith("professional_"))
+                        subsets.append(filtered)
+                ds = concatenate_datasets(subsets)
             else:
                 ds = ds.filter(lambda x: x["subject"] in self.dataset_info["SUB_TASKS"])
 

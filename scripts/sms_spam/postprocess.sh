@@ -1,4 +1,5 @@
-python3 src/cache/cache_postprocess.py \
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
+python3 "$ROOT/src/cache/cache_postprocess.py" \
     --save_dir "$SCRATCH/mera-runs/" \
     --save_cache_key "1000" \
     --dataset_names "sms_spam" \
