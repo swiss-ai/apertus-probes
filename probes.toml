@@ -20,7 +20,7 @@ TMPDIR = "/iopsstor/scratch/cscs/${USER}/tmp"
 HF_HOME = "/iopsstor/scratch/cscs/${USER}/hf_cache"
 HF_DATASETS_CACHE = "/iopsstor/scratch/cscs/${USER}/hf_cache/datasets"
 TRANSFORMERS_CACHE = "/iopsstor/scratch/cscs/${USER}/hf_cache/models"
-PYTHONPATH = "/users/${USER}/projects/apertus-probes/MERA-steering:/users/${USER}/projects/apertus-probes/MERA-steering/src"
+PYTHONPATH = "/users/${USER}/projects/apertus-probes:/users/${USER}/projects/apertus-probes/src"
 
 # NCCL / PyTorch niceties
 NCCL_DEBUG = "INFO"

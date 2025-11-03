@@ -7,7 +7,7 @@ from huggingface_hub import login
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import concatenate_datasets
-from utils import *
+from src.utils import *
 
 
 def generate_text_variants(word: str, remove_lower: bool = False) -> list:
