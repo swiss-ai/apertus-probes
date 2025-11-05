@@ -8,6 +8,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import login
 import torch.nn.functional as F
+
 from utils import *
 from cache.cache_utils import *
 from tasks.task_handler import *
@@ -116,6 +117,7 @@ def main(
             # Step 4: Generate activations.
             activations = collect_activations(
                 model=model_handler.model,
+                tokenizer=model_handler.tokenizer,
                 completions=completions["completions"],
                 batch_size=batch_size,
                 mode="all",
