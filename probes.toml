@@ -1,4 +1,4 @@
-image = "${SCRATCH}/ce-images/probes+latest.sqsh"
+image = "${SCRATCH}/ce-images/probes-pytorch+25.06.sqsh"
 
 # Mount exactly what you need (you can also use ${SCRATCH}:${SCRATCH} style)
 mounts = [

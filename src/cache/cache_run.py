@@ -68,7 +68,6 @@ def main(
         completions = generate_completions(
             model=model_handler.model,
             tokenizer=model_handler.tokenizer,
-            tokenizer_kwargs=model_handler.tokenizer_kwargs,
             prompts=dataset_handler.prompts,
             dataset_info=dataset_handler.dataset_info,
             batch_size=batch_size,
@@ -103,7 +102,7 @@ def main(
             match_indices=completions["match_indices"],
             save_dir=save_dir_curr,
             save_key=save_key,
-            overwrite=overwrite,
+            overwrite=overwrite
         )
         clean_gpus()
 

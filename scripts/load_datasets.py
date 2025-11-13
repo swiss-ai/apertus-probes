@@ -8,7 +8,8 @@ os.makedirs(cache_dir, exist_ok=True)
 datasets_to_cache = {
     # name used by your project : HF hub id, second param for load_dataset
     "sms_spam":         ("ucirvine/sms_spam", None),
-    "mmlu": ("cais/mmlu", "all")   
+    "mmlu": ("cais/mmlu", "all"),
+    "arc-easy": ("allenai/ai2_arc", "ARC-Easy")
 }
 
 for name, (hf_id, ds_arg) in datasets_to_cache.items():

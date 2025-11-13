@@ -16,7 +16,6 @@ from sklearn.model_selection import train_test_split
 import pickle
 
 from cache.cache_utils import load_saved_data
-from steering.constants import *
 from src.utils import *
 
 
@@ -59,6 +58,7 @@ def train_probes(
                 continue
             X = np.array(layer_features)
             for model_task, y_true in targets.items():
+                print("layer_idx", layer_idx, "model_task", model_task, "y_true shape", np.array(y_true).shape)
 
                 # Transform to log-odds-ratio space (numerical stability step).
                 if transform_error and model_task == "regression":
@@ -72,7 +72,7 @@ def train_probes(
                     y_true = [y for y in y_true]
 
                 for model_name, model in models[model_task].items():
-                    print(f"Training {model_name}...")
+                    print(f"Training {model_name}..., task {model_task}")
                     # Train several linear models and add it as one row to the df.
                     for m in range(nr_models):
 
@@ -131,6 +131,7 @@ def train_probes(
                                 },
                                 **dummy_metrics,
                             }
+                            print(res)
 
                             if not no_coeffs:
 
@@ -256,8 +257,9 @@ if __name__ == "__main__":
         args.save_dir,
     )
 
-    dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
-    model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
+
+    dataset_names = args.dataset_names
+    model_names = args.model_names 
     print(f"[INFO] process_saes = {process_saes}.")
     print(f"[INFO] transform_targets = {transform_targets}.")
 
@@ -298,14 +300,15 @@ if __name__ == "__main__":
         }
         return models
 
-    alphas = [0.5, 0.25, 0.1, 0.05, 0.01, 0.005]
+    alphas = [0.5, 0.25]
     models = {
-        "classification": initalise_classification_models(seed),
+        "classification": {}, # initalise_classification_models(seed),
         "regression": initialise_regression_models(seed, alphas),
     }
     error_type = "sm"
     save_name = f"_{save_name}" if save_name != "" else save_name
-
+    print("model_names", model_names)
+    print("dataset_names", dataset_names)
     for model_name in model_names:
         print(f"Processing {model_name}...")
 
@@ -373,6 +376,7 @@ if __name__ == "__main__":
                 ]
                 if error_type == "ce":
                     y_error = y_targets[f"y_error{token_pos}"]
+                    print(y_error)
                 else:
                     y_error = 1 - np.array(y_targets[f"y_softmax{token_pos}"])
 

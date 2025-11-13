@@ -210,13 +210,13 @@ def _flush_shard(save_dir: str, save_key: str):
     global activations_cache, _shard_idx, _since_last_flush
     wrote_any = False
     for layer, chunks in activations_cache.items():
+ 
         if not chunks:
             continue
-        # chunks is a list of arrays of shape [b, ...]; concat on batch dim
-        arr = np.concatenate(chunks, axis=0)
+
         fp = os.path.join(save_dir, f"{save_key}activations_{layer}_part{_shard_idx:05d}.pkl")
         with open(fp, "wb") as f:
-            pickle.dump(arr, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(chunks, f, protocol=pickle.HIGHEST_PROTOCOL)
             print(f"Saved shard {_shard_idx} for layer {layer} to {fp}")
         activations_cache[layer].clear()
         wrote_any = True
@@ -263,7 +263,6 @@ def get_activation_hook(
         if layer_name not in activations_cache:
             activations_cache[layer_name] = []
         activations_cache[layer_name].extend(activations.detach().cpu().numpy())
-        
     return hook
 
 
@@ -380,7 +379,6 @@ def collect_activations(
 
         # input_tensor = torch.from_numpy(arr).to(model.device, non_blocking=True)
         input_tensor = torch.from_numpy(batch_completions).to(model.device, non_blocking=True)
-        print("input_tensor.shape", input_tensor.shape)
         m = gpu_mem()
         dbg(f"[batch {i}] input={tuple(input_tensor.shape)} "
             f"alloc={m['alloc']:.2f}G reserv={m['reserv']:.2f}G free={m['free']:.2f}G peak={m['peak']:.2f}G")
@@ -433,9 +431,8 @@ def collect_activations(
 
 
 def generate_completions(
-    model: AutoModelForCausalLM,
+    model: PreTrainedModel,
     tokenizer: AutoTokenizer,
-    tokenizer_kwargs: Dict,
     prompts: List[str],
     dataset_info: Dict,
     batch_size: int,
@@ -672,7 +669,6 @@ def compute_targets(
     save_key: str,
     save: bool = True,
     overwrite: bool = True,
-    grad: bool = False,
 ) -> Dict[str, List]:
     """Computes all targets (errors, predictions, correctness) and saves them."""
 
@@ -701,34 +697,19 @@ def compute_targets(
         for y_error, exact_match in zip(y_error_all, match_indices)
     ]
 
-    # Compute predictions at last and exact.
-    if grad:
-        y_pred = [
-            torch.argmax(y_softmax[last_match, :])
-            for y_softmax, last_match in zip(y_softmax_all, prompt_sequence_lengths)
-        ]
-        y_pred_exact = [
-            torch.argmax(y_softmax[exact_match, :]) if exact_match != -1 else -1
-            for y_softmax, exact_match in zip(y_softmax_all, match_indices)
-        ]
-        y_pred_labels = [class_index_to_label[pos.item()] for pos in y_pred]
-        y_pred_labels_exact = [
-            class_index_to_label[pos.item()] if pos.item() != -1 else ""
-            for pos in y_pred_exact
-        ]
-    else:
-        y_pred = [
-            np.argmax(y_softmax[last_match, :])
-            for y_softmax, last_match in zip(y_softmax_all, prompt_sequence_lengths)
-        ]
-        y_pred_exact = [
-            np.argmax(y_softmax[exact_match, :]) if exact_match != -1 else -1
-            for y_softmax, exact_match in zip(y_softmax_all, match_indices)
-        ]
-        y_pred_labels = [class_index_to_label[pos] for pos in y_pred]
-        y_pred_labels_exact = [
-            class_index_to_label[pos] if pos != -1 else "" for pos in y_pred_exact
-        ]
+   
+    y_pred = [
+        np.argmax(y_softmax[last_match, :])
+        for y_softmax, last_match in zip(y_softmax_all, prompt_sequence_lengths)
+    ]
+    y_pred_exact = [
+        np.argmax(y_softmax[exact_match, :]) if exact_match != -1 else -1
+        for y_softmax, exact_match in zip(y_softmax_all, match_indices)
+    ]
+    y_pred_labels = [class_index_to_label[pos] for pos in y_pred]
+    y_pred_labels_exact = [
+        class_index_to_label[pos] if pos != -1 else "" for pos in y_pred_exact
+    ]
 
     # Compute correctness.
     y_correct = [pred == true for pred, true in zip(y_pred, y_true)]

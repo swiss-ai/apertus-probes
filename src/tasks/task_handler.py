@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Tuple
-from datasets import load_dataset, load_from_disk
+from typing import Dict, Any, Optional, List, Tuple, Union
+from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
 import numpy as np
 import requests
 from huggingface_hub import login
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel
 from datasets import concatenate_datasets
 from src.utils import *
 
@@ -21,39 +21,6 @@ def generate_text_variants(word: str, remove_lower: bool = False) -> list:
 
 
 dataset_info = {
-    "sentiment_analysis": {
-        "CLASSES": ["positive", "neutral", "negative"],
-        "CLASS_LABEL_TO_INDEX": {"positive": 0, "neutral": 1, "negative": 2},
-        "CLASS_INDEX_TO_LABEL": {0: "positive", 1: "neutral", 2: "negative"},
-        "CLASS_LABEL_SEMANTIC": {
-            "positive": generate_text_variants("positive"),
-            "neutral": generate_text_variants("neutral"),
-            "negative": generate_text_variants("negative"),
-        },
-        "DATASET_NAME_HF": "finance-instruct",
-        "MAX_LENGTH": 150,
-        "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "answer",
-        "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
-    },
-    "yes_no_question": {
-        "CLASSES": ["Yes", "No"],
-        "CLASS_LABEL_TO_INDEX": {"Yes": 0, "No": 1},
-        "CLASS_INDEX_TO_LABEL": {0: "Yes", 1: "No"},
-        "CLASS_LABEL_SEMANTIC": {
-            "Yes": generate_text_variants("Yes"),
-            "No": generate_text_variants("No"),
-        },
-        "DATASET_NAME_HF": "finance-instruct",
-        "MAX_LENGTH": 350,
-        "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "answer",
-        "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
-    },
     "sms_spam": {
         "CLASSES": ["ham", "spam"],
         "CLASS_LABEL_TO_INDEX": {"ham": 0, "spam": 1},
@@ -67,25 +34,8 @@ dataset_info = {
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "label",
         "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
     },
-    "imdb": {
-        "CLASSES": ["negative", "positive"],
-        "CLASS_LABEL_TO_INDEX": {"positive": 1, "negative": 0},
-        "CLASS_INDEX_TO_LABEL": {1: "positive", 0: "negative"},
-        "CLASS_LABEL_SEMANTIC": {
-            "positive": generate_text_variants("positive"),
-            "negative": generate_text_variants("negative"),
-        },
-        "DATASET_NAME_HF": "imdb",
-        "MAX_LENGTH": 350,
-        "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "label",
-        "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
-    },
+
     "mmlu_pro_natural_science": {
         "CLASSES": [chr(i) for i in range(65, 91)],
         "CLASS_LABEL_TO_INDEX": {chr(i): i - 65 for i in range(65, 91)},
@@ -105,7 +55,7 @@ dataset_info = {
     },
     "mmlu_high_school": {
         "CLASSES": [chr(i) for i in range(65, 69)],
-        "CLASS_LABEL_TO_INDEX": {chr(i): i - 69 for i in range(65, 69)},
+        "CLASS_LABEL_TO_INDEX": {chr(i): i - 65 for i in range(65, 69)},
         "CLASS_INDEX_TO_LABEL": {i - 65: chr(i) for i in range(65, 69)},
         "CLASS_LABEL_SEMANTIC": {
             # chr(i): [f"{chr(i)}", f"{chr(i)} ", f" {chr(i)}"] for i in range(65, 69)
@@ -158,6 +108,21 @@ dataset_info = {
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
     },
+    "ARC-Easy": {
+        "CLASSES": [chr(i) for i in range(65, 69)],
+        "CLASS_LABEL_TO_INDEX": {chr(i): i - 65 for i in range(65, 69)},
+        "CLASS_INDEX_TO_LABEL": {i - 65: chr(i) for i in range(65, 69)},
+        "CLASS_LABEL_SEMANTIC": {
+            chr(i): generate_text_variants(chr(i), remove_lower=True)
+            for i in range(65, 69)
+        },
+        "DATASET_NAME_HF": "ai2_arc",
+        "MAX_LENGTH": 250,
+        "MAX_NEW_TOKENS": 100,
+        "NR_TRAINING_SAMPLES": 5000,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
+    }
 }
 
 
@@ -168,13 +133,13 @@ class TaskConfig:
     token: str
     cache_dir: str
     dataset_name: str
-    device: str
+    device: Optional[str]
     nr_devices: int
     model_name: str
     flexible_match: bool
     batch_size: int = 1
-    model_kwargs: Optional[Dict[str, Any]] = None
-    tokenizer_kwargs: Optional[Dict[str, Any]] = None
+    model_kwargs: Dict[str, Any] = dict()
+    tokenizer_kwargs: Dict[str, Any] = dict()
     nr_samples: Optional[int] = None
     nr_test_samples: Optional[int] = None
     nr_ref_samples: Optional[int] = None
@@ -214,7 +179,7 @@ class ModelHandler:
         print(f"[INFO] Loading model and tokenizer...")
         self.config = config
         self.tokenizer = self._load_tokenizer()
-        self.model = self._load_model()
+        self.model : PreTrainedModel  = self._load_model()
         self.nr_layers = len(self.model.model.layers)
         self.tokenizer_kwargs = self.config.tokenizer_kwargs
         print(f"[INFO] \n... Done.")
@@ -226,14 +191,9 @@ class ModelHandler:
         return tokenizer
 
     def _load_model(self):
-        if self.config.model_name in [
-            "Qwen/Qwen2.5-3B",
-            "Qwen/Qwen2.5-3B-Instruct",
-            "meta-llama/Llama-3.2-1B",
-            "meta-llama/Llama-3.2-1B-Instruct",
-        ]:
-            self.config.model_kwargs["pad_token_id"] = self.tokenizer.eos_token_id
-
+        
+        self.config.model_kwargs["pad_token_id"] = self.tokenizer.eos_token_id
+        print("[DEBUG] Model kwargs:", self.config.model_kwargs)
         model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name, **self.config.model_kwargs
         )
@@ -242,43 +202,66 @@ class ModelHandler:
 
 
 class DatasetHandler:
+    """
+    DatasetHandler is a class responsible for managing and processing datasets for various tasks. 
+    It loads datasets, filters them based on configuration, and prepares samples, labels, and prompts 
+    for training, testing, and reference purposes.
+
+    Attributes:
+        config (TaskConfig): Configuration object containing dataset and task-specific settings.
+        tokenizer: Tokenizer object used for processing text data.
+        device: Device (e.g., CPU or GPU) specified in the configuration.
+        dataset_info (dict): Information about the dataset, including label mappings and task-specific details.
+        ds: The loaded dataset object.
+        ds_samples: Samples from the dataset for training or evaluation.
+        y_true_labels: Ground truth labels in human-readable format for the training/evaluation samples.
+        y_true: Ground truth labels in numerical format for the training/evaluation samples.
+        prompts: Generated prompts for the training/evaluation samples.
+        ds_samples_test: Test samples from the dataset (if specified in the configuration).
+        y_true_labels_test: Ground truth labels in human-readable format for the test samples.
+        y_true_test: Ground truth labels in numerical format for the test samples.
+        prompts_test: Generated prompts for the test samples.
+        ds_samples_ref: Reference samples from the dataset (if specified in the configuration).
+        y_true_labels_ref: Ground truth labels in human-readable format for the reference samples.
+        y_true_ref: Ground truth labels in numerical format for the reference samples.
+        prompts_ref: Generated prompts for the reference samples.
+
+    Methods:
+        __init__(config, tokenizer):
+            Initializes the DatasetHandler, loads the dataset, and prepares samples, labels, and prompts.
+
+        _load_dataset():
+            Loads the dataset from disk and applies filtering based on the configuration.
+
+        _get_samples(end_idx, start_idx=0):
+            Retrieves a subset of samples from the dataset based on the specified range.
+
+        _get_y_true_labels(samples):
+            Extracts ground truth labels in both human-readable and numerical formats from the given samples.
+
+        _update_dataset_info_with_token_ids():
+            Updates the dataset information with token IDs for valid ground truth labels.
+
+        _get_prompts(samples):
+            Generates prompts for the given samples based on the dataset and task configuration.
+
+        __len__():
+            Returns the number of training/evaluation samples.
+    """
     def __init__(self, config: TaskConfig, tokenizer):
         print(f"[INFO] Loading dataset...")
         self.config = config
         self.tokenizer = tokenizer
         self.device = config.device
         self.dataset_info = self.config.dataset_info
-        self._update_dataset_info_with_token_ids()
+        self._update_dataset_info_with_token_ids() 
 
-        self.ds = self._load_dataset()
-        self.ds_samples = self._get_samples(end_idx=self.config.nr_samples, start_idx=0)
+        self.ds : Union[Dataset, DatasetDict] = self._load_dataset() # Loads HF dataset into a Dataset object
+        self.ds_samples : Dataset = self._get_samples(end_idx=self.config.nr_samples, start_idx=0)
         self.y_true_labels, self.y_true = self._get_y_true_labels(self.ds_samples)
-        self.prompts = self._get_prompts(self.ds_samples)
+        self.prompts : List[str] = self._get_prompts(self.ds_samples)
+        
 
-        if self.config.nr_test_samples is not None:
-            end_idx = self.config.nr_samples + self.config.nr_test_samples
-            start_idx = self.config.nr_samples
-            self.ds_samples_test = self._get_samples(
-                end_idx=end_idx, start_idx=start_idx
-            )
-            self.y_true_labels_test, self.y_true_test = self._get_y_true_labels(
-                self.ds_samples_test
-            )
-            self.prompts_test = self._get_prompts(self.ds_samples_test)
-        if self.config.nr_ref_samples is not None:
-            end_idx = (
-                self.config.nr_samples
-                + self.config.nr_test_samples
-                + self.config.nr_ref_samples
-            )
-            start_idx = self.config.nr_samples + self.config.nr_test_samples
-            self.ds_samples_ref = self._get_samples(
-                end_idx=end_idx, start_idx=start_idx
-            )
-            self.y_true_labels_ref, self.y_true_ref = self._get_y_true_labels(
-                self.ds_samples_ref
-            )
-            self.prompts_ref = self._get_prompts(self.ds_samples_ref)
 
         print(f"[INFO] ... Done.")
         print(f"[DEBUG] Loaded HF dataset: {self.config.dataset_name_hf}")
@@ -286,11 +269,9 @@ class DatasetHandler:
         print(f"[DEBUG] Dataset size after filtering: {len(self.prompts)}")
 
 
-    def _load_dataset(self):
+    def _load_dataset(self) -> Union[Dataset, DatasetDict]:
         ds = load_from_disk(f"{self.config.cache_dir}{self.config.dataset_name_hf}.hf")
-        if self.config.dataset_name_hf == "finance-instruct":
-            ds = ds.filter(lambda x: x["task_type"] == self.config.dataset_name)
-        elif self.config.dataset_name_hf == "mmlu_pro":
+        if self.config.dataset_name_hf == "mmlu_pro":
             ds = ds.filter(lambda x: x["category"] in self.dataset_info["SUB_TASKS"])
         elif self.config.dataset_name_hf == "mmlu":
             if self.config.dataset_name == "mmlu_professional":
@@ -306,31 +287,23 @@ class DatasetHandler:
 
         return ds
 
-    def _get_samples(self, end_idx: int, start_idx: int = 0):
-        if self.config.dataset_name_hf in ["finance-instruct", "sms_spam"]:
-            return self.ds["train"].select(range(start_idx, end_idx))
-        elif self.config.dataset_name == "mmlu_professional":
+    def _get_samples(self, end_idx: int, start_idx: int = 0) -> Dataset:
+
+        if self.config.dataset_name == "mmlu_professional":
             return self.ds.select(range(start_idx, end_idx))
         elif self.config.dataset_name_hf in ["mmlu_pro", "imdb"]:  # == "mmlu_pro":
             return self.ds.select(range(start_idx, end_idx))
         elif self.config.dataset_name_hf in ["mmlu"]:  # , "imdb"]:
             return self.ds["test"].select(range(start_idx, end_idx))
 
-    def _get_y_true_labels(self, samples):
-        if self.config.dataset_name_hf in ["mmlu", "sms_spam", "imdb"]:
-            return [
-                self.dataset_info["CLASS_INDEX_TO_LABEL"][
-                    s[self.dataset_info["LABEL_NAME"]]
-                ]
-                for s in samples
-            ], [s[self.dataset_info["LABEL_NAME"]] for s in samples]
-        else:
-            return [s[self.dataset_info["LABEL_NAME"]] for s in samples], [
-                self.dataset_info["CLASS_LABEL_TO_INDEX"][
-                    s[self.dataset_info["LABEL_NAME"]]
-                ]
-                for s in samples
+    def _get_y_true_labels(self, samples : Dataset) -> Tuple[List[str], List[int]]:
+        return [
+            self.dataset_info["CLASS_INDEX_TO_LABEL"][
+                s[self.dataset_info["LABEL_NAME"]]
             ]
+            for s in samples
+        ], [s[self.dataset_info["LABEL_NAME"]] for s in samples]
+        
 
     def _update_dataset_info_with_token_ids(self):
         """Updates `VALID_GROUND_TRUTH_TOKEN_IDS` with the last token ID for each semantic label variant."""
@@ -353,15 +326,11 @@ class DatasetHandler:
             f"[INFO] VALID_GROUND_TRUTH_TOKEN_IDS updated: {self.dataset_info['VALID_GROUND_TRUTH_TOKEN_IDS']}"
         )
 
-    def _get_prompts(self, samples):
-        if self.config.dataset_name_hf == "finance-instruct":
-            return [s["inputs"] + " " for s in samples]
+    def _get_prompts(self, samples: Dataset) -> List[str]:
         prompts = []
 
         if "mmlu" in self.config.dataset_name:
             options = samples["choices"]
-            if "natural_science" in self.config.dataset_name:
-                options = samples["options"]
 
             for i, option in enumerate(options):
                 formatted_options = "\n".join(

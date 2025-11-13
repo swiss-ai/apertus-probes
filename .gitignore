@@ -28,3 +28,4 @@ Thumbs.db
 start_tunnel.sh
 logs/
 scratch
+*.pickle
