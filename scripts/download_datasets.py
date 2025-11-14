@@ -151,10 +151,11 @@ def convert_sms_spam_split(split_ds) -> List[Dict[str, Any]]:
 # -----------------------------
 def run_mmlu_high_school(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("cais/mmlu", "all")
+    rows = []
     for split in ds.keys():
-        rows = convert_mmlu_split(ds[split], category_prefix="high_school_")
-        outp = os.path.join(out_dir, "mmlu_high_school", "all", f"{split}.jsonl")
-        write_jsonl(rows, outp, overwrite)
+        rows.extend(convert_mmlu_split(ds[split], category_prefix="high_school_"))
+    outp = os.path.join(out_dir, "mmlu_high_school", "dataset.jsonl")
+    write_jsonl(rows, outp, overwrite)
 
 def run_mmlu_professional(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("cais/mmlu", "all")
@@ -213,6 +214,7 @@ def main():
     out_dir = os.path.abspath(args.out_dir)
     ensure_dir(out_dir)
     selected = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    
     for d in selected:
         if d not in ALL_DATASETS:
             print(f"[SKIP] Unknown dataset key '{d}'. Allowed: {list(ALL_DATASETS.keys())}")

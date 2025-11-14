@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH -A infra01
 #SBATCH -p normal
-#SBATCH -t 03:00:00
+#SBATCH -t 06:00:00
 #SBATCH -J mmlu_cache
 #SBATCH -o logs/%x-%j.out
 #SBATCH --gpus-per-node=1

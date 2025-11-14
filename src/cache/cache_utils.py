@@ -7,7 +7,7 @@ from torch.cuda.amp import autocast
 import numpy as np
 from typing import List, Dict, Optional, Callable, Tuple, Union, Any
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 import psutil
 
 import torch.nn.functional as F
@@ -16,7 +16,7 @@ from tasks.task_handler import *
 
 DEBUG = True
 
-def gpu_mem():
+def _gpu_mem():
     if not torch.cuda.is_available():
         return dict(alloc=0, reserv=0, free=0, total=0, peak=0)
     free_b, total_b = torch.cuda.mem_get_info()
@@ -29,9 +29,21 @@ def gpu_mem():
     )
 torch.cuda.reset_peak_memory_stats()
 torch.cuda.memory._record_memory_history(stacks="python")
-def dbg(*a):
-    if DEBUG: print(*a)
 
+
+
+def _ram_mem():
+    vm = psutil.virtual_memory()
+    return {
+        "rss_used_gb": (psutil.Process().memory_info().rss) / 1e9,
+        "used_gb": vm.used / 1e9,
+        "avail_gb": vm.available / 1e9,
+        "total_gb": vm.total / 1e9,
+    }
+
+def dbg(*a):
+    if DEBUG: 
+        print(*a, file=sys.stderr, flush=True)
 
 def find_first_exact_match(
     completions: torch.Tensor,
@@ -166,7 +178,6 @@ def compute_softmax_per_position(class_logits: torch.Tensor) -> torch.Tensor:
 def calculate_cross_entropy_error(
     softmax_scores: List[np.ndarray],
     y_true: List[int],
-    grad: bool,
 ) -> List[Union[np.ndarray, torch.Tensor]]:
     """Calculate cross-entropy error for each position in the sequence."""
     errors = []
@@ -183,21 +194,12 @@ def calculate_cross_entropy_error(
                 f"True label {true_label} is out of range for {num_classes} classes."
             )
 
-        if not grad:
-            one_hot_encoded = np.eye(num_classes)[true_label]
-            log_softmax_scores = np.log(softmax + 1e-9)  # Avoid log(0) errors.
-            cross_entropy_error = -np.sum(one_hot_encoded * log_softmax_scores, axis=-1)
-        else:
-            log_softmax = torch.log(softmax + 1e-9)
-            true_label_tensor = torch.tensor(
-                [true_label], dtype=torch.long, device=softmax.device
-            )
-            one_hot = F.one_hot(
-                true_label_tensor, num_classes=softmax.shape[-1]
-            ).float()
-            cross_entropy_error = -torch.sum(one_hot * log_softmax, dim=-1)
+        one_hot_encoded = np.eye(num_classes)[true_label]
+        log_softmax_scores = np.log(softmax + 1e-9)  # Avoid log(0) errors.
+        cross_entropy_error = -np.sum(one_hot_encoded * log_softmax_scores, axis=-1)
+      
 
-        errors.append(cross_entropy_error if grad else cross_entropy_error)
+        errors.append(cross_entropy_error)
 
     return errors
 
@@ -432,7 +434,7 @@ def collect_activations(
 
 def generate_completions(
     model: PreTrainedModel,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizer,
     prompts: List[str],
     dataset_info: Dict,
     batch_size: int,
@@ -443,7 +445,7 @@ def generate_completions(
     save: bool = True,
     overwrite: bool = True,
     grad: bool = False,
-    use_cache: bool = True,
+    use_cache: bool = False,
     disable_tdqm: bool = False,
     model_generation_kwargs: Optional[dict] = {},
 ) -> Dict[str, List]:
@@ -477,9 +479,12 @@ def generate_completions(
     for i in tqdm(
         range(0, len(prompts), batch_size),
         desc="Generating Completions",
-        disable=disable_tdqm,
+        disable=True,
         leave=True,
     ):
+        dbg(f"Batch {i}")
+        dbg(f"RAM memory 1: {_ram_mem()}")
+        dbg(f"GPU memory: {_gpu_mem()}")
         batch_prompts = prompts[i : i + batch_size]
         prompts_tokenized = tokenizer(
             batch_prompts,
@@ -492,7 +497,6 @@ def generate_completions(
         input_ids = prompts_tokenized.input_ids.to(device)
         attention_mask = prompts_tokenized.attention_mask.to(device)
         prompt_sequence_length = input_ids.shape[1]
-
         # grad_context = torch.no_grad() if not grad else suppress()
         grad_context = torch.enable_grad() if grad else torch.no_grad()
         with grad_context:  # , autocast(dtype=torch.float16):
@@ -500,87 +504,116 @@ def generate_completions(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=max_new_tokens,
-                return_dict_in_generate=True,
+                return_dict_in_generate=True,      # <- ensure it's a tensor       
                 do_sample=False,
-                use_cache=use_cache,
+                use_cache=False,
                 pad_token_id=tokenizer.eos_token_id,
                 # **model_generation_kwargs, #
             )
-            completions.append(output.sequences.cpu().numpy())
-            completions_str.extend(
-                tokenizer.batch_decode(output.sequences, skip_special_tokens=True)
-            )
-            attention_mask_completion = torch.cat(
-                [
-                    attention_mask,
-                    torch.ones(
-                        (
-                            attention_mask.size(0),
-                            output.sequences.size(1) - attention_mask.size(1),
-                        ),
-                        device=attention_mask.device,
-                    ),
-                ],
-                dim=1,
-            )
-            attention_masks.append(attention_mask_completion.cpu().numpy())
-            answer = output.sequences[:, input_ids.shape[1] :]
-            answer_str = tokenizer.batch_decode(answer, skip_special_tokens=True)
-            answers.append(answer.cpu().numpy())
-            answers_str.append(answer_str)
-            completion_sequence_length = output.sequences.shape[1]
+        del output
+        gc.collect()
+        torch.cuda.empty_cache()
+       
+        # snap = tracemalloc.take_snapshot()
+        # top = snap.statistics("lineno")[:10]
+        # for s in top:
+        #     dbg(str(s))   
+   
+        # sequences = output.sequences
+        # answers_t = sequences[:, input_ids.shape[1]:]
+     
+    
+        # gc.collect()
+        # torch.cuda.empty_cache()
+        # completions_np = sequences.cpu().numpy()
+        # answers_np = answers_t.cpu().numpy()
+        # completions_txt = tokenizer.batch_decode(sequences, skip_special_tokens=True)
+        # answers_txt = tokenizer.batch_decode(answers_t, skip_special_tokens=True)
 
-            # Find matches with token-based function!
-            match_token, match_index, match_flag = find_first_exact_match(
-                # tokenizer=tokenizer,
-                completions=output.sequences,
-                token_start_position=prompt_sequence_length,
-                flexible_match=flexible_match,
-                dataset_info=dataset_info,
-                fallback=-1,
-            )
-            match_tokens.append(match_token[0])
-            match_indices.append(match_index[0])
-            match_flags.append(match_flag[0])
-            prompt_sequence_lengths.append(prompt_sequence_length)
-            completion_sequence_lengths.append(completion_sequence_length)
+        # bytes_arrays = completions_np.nbytes + answers_np.nbytes
+        # bytes_masks  = 0  # we fill below after building the mask
+        # bytes_text   = sum(len(s) for s in completions_txt) + sum(len(s) for s in answers_txt)
 
-    result_pkl = {
-        "completions": completions,
-        "answers": answers,
-        "attention_masks": attention_masks,
-        "match_tokens": match_tokens,
-        "match_indices": match_indices,
-        "match_flags": match_flags,
-        "max_length": max_length,
-        "max_new_tokens": max_new_tokens,
-        "prompt_sequence_lengths": prompt_sequence_lengths,
-        "completion_sequence_lengths": completion_sequence_lengths,
-    }
+        # dbg(f"[batch {i}] arrays={bytes_arrays/1e6:.5f} MB, text~={bytes_text/1e6:.5f} MB")
+        
+    #     completions.append(sequences.cpu().numpy())
+    #     completions_str.extend(
+    #         tokenizer.batch_decode(sequences, skip_special_tokens=True)
+    #     )
+    #     attention_mask_completion = torch.cat(
+    #         [
+    #             attention_mask,
+    #             torch.ones(
+    #                 (
+    #                     attention_mask.size(0),
+    #                     sequences.size(1) - attention_mask.size(1),
+    #                 ),
+    #                 device=attention_mask.device,
+    #             ),
+    #         ],
+    #         dim=1,
+    #     )
+    #     attention_masks.append(attention_mask_completion.cpu().numpy())
+    #     answer = sequences[:, input_ids.shape[1] :]
+    #     answer_str = tokenizer.batch_decode(answer, skip_special_tokens=True)
+    #     answers.append(answer.cpu().numpy())
+    #     answers_str.append(answer_str)
+    #     completion_sequence_length = sequences.shape[1]
 
-    result_str_pkl = {
-        "completions_str": completions_str,
-        "answers_str": answers_str,
-    }
+    #     # Find matches with token-based function!
+    #     match_token, match_index, match_flag = find_first_exact_match(
+    #         # tokenizer=tokenizer,
+    #         completions=sequences,
+    #         token_start_position=prompt_sequence_length,
+    #         flexible_match=flexible_match,
+    #         dataset_info=dataset_info,
+    #         fallback=-1,
+    #     )
+    #     match_tokens.append(match_token[0])
+    #     match_indices.append(match_index[0])
+    #     match_flags.append(match_flag[0])
+    #     prompt_sequence_lengths.append(prompt_sequence_length)
+    #     completion_sequence_lengths.append(completion_sequence_length)
 
-    if save:
 
-        with open(file_path, "wb") as f:
-            pickle.dump(result_pkl, f)
+        
+     
+    # result_pkl = {
+    #     "completions": completions,
+    #     "answers": answers,
+    #     "attention_masks": attention_masks,
+    #     "match_tokens": match_tokens,
+    #     "match_indices": match_indices,
+    #     "match_flags": match_flags,
+    #     "max_length": max_length,
+    #     "max_new_tokens": max_new_tokens,
+    #     "prompt_sequence_lengths": prompt_sequence_lengths,
+    #     "completion_sequence_lengths": completion_sequence_lengths,
+    # }
 
-        print(f"All completions saved to {file_path}")
+    # result_str_pkl = {
+    #     "completions_str": completions_str,
+    #     "answers_str": answers_str,
+    # }
 
-        # Save completions.
-        with open(file_path_str, "wb") as f:
-            pickle.dump(result_str_pkl, f)
+    # if save:
 
-        print(f"All completions_str saved to {file_path_str}")
+    #     with open(file_path, "wb") as f:
+    #         pickle.dump(result_pkl, f)
 
-    return {**result_str_pkl, **result_pkl}
+    #     print(f"All completions saved to {file_path}")
+
+    #     # Save completions.
+    #     with open(file_path_str, "wb") as f:
+    #         pickle.dump(result_str_pkl, f)
+
+    #     print(f"All completions_str saved to {file_path_str}")
+
+    # return {**result_str_pkl, **result_pkl}
 
 
 def compute_logits(
-    model: AutoModelForCausalLM,
+    model: PreTrainedModel,
     completions: List[np.ndarray],
     mode: str,
     position: Optional[int],
@@ -685,7 +718,7 @@ def compute_targets(
                 return pickle.load(f)
 
     # Compute errors!
-    y_error_all = calculate_cross_entropy_error(y_softmax_all, y_true, grad)
+    y_error_all = calculate_cross_entropy_error(y_softmax_all, y_true)
     y_error = [
         y_error[last_match]
         for y_error, last_match in zip(y_error_all, prompt_sequence_lengths)

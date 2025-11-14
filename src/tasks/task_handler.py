@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Tuple, Union
 from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
 import numpy as np
@@ -8,7 +8,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel
 from datasets import concatenate_datasets
 from src.utils import *
-
+import json
 
 def generate_text_variants(word: str, remove_lower: bool = False) -> list:
     transformations = [word.lower(), word.upper(), word.capitalize()]
@@ -62,26 +62,10 @@ dataset_info = {
             chr(i): generate_text_variants(chr(i), remove_lower=True)
             for i in range(65, 69)
         },
-        "SUB_TASKS": [
-            "high_school_biology",
-            "high_school_chemistry",
-            "high_school_computer_science",
-            "high_school_european_history",
-            "high_school_geography",
-            "high_school_government_and_politics",
-            "high_school_macroeconomics",
-            "high_school_mathematics",
-            "high_school_microeconomics",
-            "high_school_physics",
-            "high_school_psychology",
-            "high_school_statistics",
-            "high_school_us_history",
-            "high_school_world_history",
-        ],
+        
         "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "answer",
         "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
@@ -138,8 +122,8 @@ class TaskConfig:
     model_name: str
     flexible_match: bool
     batch_size: int = 1
-    model_kwargs: Dict[str, Any] = dict()
-    tokenizer_kwargs: Dict[str, Any] = dict()
+    model_kwargs: Dict[str, Any] = field(default_factory=dict)
+    tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     nr_samples: Optional[int] = None
     nr_test_samples: Optional[int] = None
     nr_ref_samples: Optional[int] = None
@@ -256,10 +240,7 @@ class DatasetHandler:
         self.dataset_info = self.config.dataset_info
         self._update_dataset_info_with_token_ids() 
 
-        self.ds : Union[Dataset, DatasetDict] = self._load_dataset() # Loads HF dataset into a Dataset object
-        self.ds_samples : Dataset = self._get_samples(end_idx=self.config.nr_samples, start_idx=0)
-        self.y_true_labels, self.y_true = self._get_y_true_labels(self.ds_samples)
-        self.prompts : List[str] = self._get_prompts(self.ds_samples)
+        self.prompts, self.y_true,  = self._load_dataset() # Loads HF dataset into a Dataset object
         
 
 
@@ -268,42 +249,6 @@ class DatasetHandler:
         print(f"[DEBUG] Task config name: {self.config.dataset_name}")
         print(f"[DEBUG] Dataset size after filtering: {len(self.prompts)}")
 
-
-    def _load_dataset(self) -> Union[Dataset, DatasetDict]:
-        ds = load_from_disk(f"{self.config.cache_dir}{self.config.dataset_name_hf}.hf")
-        if self.config.dataset_name_hf == "mmlu_pro":
-            ds = ds.filter(lambda x: x["category"] in self.dataset_info["SUB_TASKS"])
-        elif self.config.dataset_name_hf == "mmlu":
-            if self.config.dataset_name == "mmlu_professional":
-                # Filter all splits
-                subsets = []
-                for split in ["test", "validation", "dev"]:
-                    if split in ds:
-                        filtered = ds[split].filter(lambda x: x["subject"].startswith("professional_"))
-                        subsets.append(filtered)
-                ds = concatenate_datasets(subsets)
-            else:
-                ds = ds.filter(lambda x: x["subject"] in self.dataset_info["SUB_TASKS"])
-
-        return ds
-
-    def _get_samples(self, end_idx: int, start_idx: int = 0) -> Dataset:
-
-        if self.config.dataset_name == "mmlu_professional":
-            return self.ds.select(range(start_idx, end_idx))
-        elif self.config.dataset_name_hf in ["mmlu_pro", "imdb"]:  # == "mmlu_pro":
-            return self.ds.select(range(start_idx, end_idx))
-        elif self.config.dataset_name_hf in ["mmlu"]:  # , "imdb"]:
-            return self.ds["test"].select(range(start_idx, end_idx))
-
-    def _get_y_true_labels(self, samples : Dataset) -> Tuple[List[str], List[int]]:
-        return [
-            self.dataset_info["CLASS_INDEX_TO_LABEL"][
-                s[self.dataset_info["LABEL_NAME"]]
-            ]
-            for s in samples
-        ], [s[self.dataset_info["LABEL_NAME"]] for s in samples]
-        
 
     def _update_dataset_info_with_token_ids(self):
         """Updates `VALID_GROUND_TRUTH_TOKEN_IDS` with the last token ID for each semantic label variant."""
@@ -326,53 +271,28 @@ class DatasetHandler:
             f"[INFO] VALID_GROUND_TRUTH_TOKEN_IDS updated: {self.dataset_info['VALID_GROUND_TRUTH_TOKEN_IDS']}"
         )
 
-    def _get_prompts(self, samples: Dataset) -> List[str]:
-        prompts = []
+    def _load_dataset(self) -> Tuple[List[str], List[str]]:
 
-        if "mmlu" in self.config.dataset_name:
-            options = samples["choices"]
+        jsonl_path = f"{self.config.cache_dir}{self.config.dataset_name}/dataset.jsonl"
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            raw_records = [json.loads(line) for line in f if line.strip()]
 
-            for i, option in enumerate(options):
-                formatted_options = "\n".join(
-                    [
-                        f"{self.dataset_info['CLASS_INDEX_TO_LABEL'][i]}. {choice}"
-                        for i, choice in enumerate(option)
-                    ]
+        required_fields = {"question_with_prompt", "answer"}
+        questions_with_prompt: List[str] = []
+        answers: List[str] = []
+
+        for idx, record in enumerate(raw_records, start=1):
+
+            missing = required_fields - record.keys()
+            if missing:
+                raise ValueError(
+                    f"Missing expected fields {missing} in record {idx} from {jsonl_path}"
                 )
-                answer_options = ", ".join(
-                    [
-                        f"{self.dataset_info['CLASS_INDEX_TO_LABEL'][i]}"
-                        for i in range(len(option))
-                    ]
-                )
-                prompt = f"""Question: {samples['question'][i]}
-                \nOptions:\n{formatted_options}
-                \nPlease select the correct answer. 
-                Only return one letter {answer_options}. 
-                Answer:\n """
-                prompts.append(prompt)
+            questions_with_prompt.append(record["question_with_prompt"])
+            answers.append(record["answer"])
 
-        elif self.config.dataset_name == "sms_spam":
-            sms_inputs = [s["sms"] + " " for s in samples]
-            for sms in sms_inputs:
-                prompt = f"""
-                This SMS (text message): "{sms.strip()}" is classified as either spam or ham.
-                \nPlease evaluate the content of the SMS and select the correct classification.
-                \nOnly return one word: "ham" or "spam".
-                Answer:\n """
-                prompts.append(prompt)
+        return questions_with_prompt, answers
 
-        elif self.config.dataset_name == "imdb":
-            texts = [s["text"] + " " for s in samples]
-            for text in texts:
-                prompt = f"""
-                Review: "{text.strip()}"
-                \nPlease classify this review as either "positive or "negative" sentiment.
-                \nOnly return one word: "positive" for a positive review or "negative" for a negative review.
-                Answer:\n """
-                prompts.append(prompt)
-
-        return prompts
 
     def __len__(self):
         return len(self.ds_samples)
