@@ -28,9 +28,6 @@ def _gpu_mem():
         peak  = torch.cuda.max_memory_allocated() / (1024**3),
     )
 torch.cuda.reset_peak_memory_stats()
-torch.cuda.memory._record_memory_history(stacks="python")
-
-
 
 def _ram_mem():
     vm = psutil.virtual_memory()
@@ -479,7 +476,7 @@ def generate_completions(
     for i in tqdm(
         range(0, len(prompts), batch_size),
         desc="Generating Completions",
-        disable=True,
+        disable=False,
         leave=True,
     ):
         dbg(f"Batch {i}")
@@ -506,13 +503,11 @@ def generate_completions(
                 max_new_tokens=max_new_tokens,
                 return_dict_in_generate=True,      # <- ensure it's a tensor       
                 do_sample=False,
-                use_cache=False,
+                use_cache=True,
                 pad_token_id=tokenizer.eos_token_id,
                 # **model_generation_kwargs, #
             )
-        del output
-        gc.collect()
-        torch.cuda.empty_cache()
+  
        
         # snap = tracemalloc.take_snapshot()
         # top = snap.statistics("lineno")[:10]
@@ -535,81 +530,81 @@ def generate_completions(
         # bytes_text   = sum(len(s) for s in completions_txt) + sum(len(s) for s in answers_txt)
 
         # dbg(f"[batch {i}] arrays={bytes_arrays/1e6:.5f} MB, text~={bytes_text/1e6:.5f} MB")
-        
-    #     completions.append(sequences.cpu().numpy())
-    #     completions_str.extend(
-    #         tokenizer.batch_decode(sequences, skip_special_tokens=True)
-    #     )
-    #     attention_mask_completion = torch.cat(
-    #         [
-    #             attention_mask,
-    #             torch.ones(
-    #                 (
-    #                     attention_mask.size(0),
-    #                     sequences.size(1) - attention_mask.size(1),
-    #                 ),
-    #                 device=attention_mask.device,
-    #             ),
-    #         ],
-    #         dim=1,
-    #     )
-    #     attention_masks.append(attention_mask_completion.cpu().numpy())
-    #     answer = sequences[:, input_ids.shape[1] :]
-    #     answer_str = tokenizer.batch_decode(answer, skip_special_tokens=True)
-    #     answers.append(answer.cpu().numpy())
-    #     answers_str.append(answer_str)
-    #     completion_sequence_length = sequences.shape[1]
+        sequences = output.sequences
+        completions.append(sequences.cpu().numpy())
+        completions_str.extend(
+            tokenizer.batch_decode(sequences, skip_special_tokens=True)
+        )
+        attention_mask_completion = torch.cat(
+            [
+                attention_mask,
+                torch.ones(
+                    (
+                        attention_mask.size(0),
+                        sequences.size(1) - attention_mask.size(1),
+                    ),
+                    device=attention_mask.device,
+                ),
+            ],
+            dim=1,
+        )
+        attention_masks.append(attention_mask_completion.cpu().numpy())
+        answer = sequences[:, input_ids.shape[1] :]
+        answer_str = tokenizer.batch_decode(answer, skip_special_tokens=True)
+        answers.append(answer.cpu().numpy())
+        answers_str.append(answer_str)
+        completion_sequence_length = sequences.shape[1]
 
-    #     # Find matches with token-based function!
-    #     match_token, match_index, match_flag = find_first_exact_match(
-    #         # tokenizer=tokenizer,
-    #         completions=sequences,
-    #         token_start_position=prompt_sequence_length,
-    #         flexible_match=flexible_match,
-    #         dataset_info=dataset_info,
-    #         fallback=-1,
-    #     )
-    #     match_tokens.append(match_token[0])
-    #     match_indices.append(match_index[0])
-    #     match_flags.append(match_flag[0])
-    #     prompt_sequence_lengths.append(prompt_sequence_length)
-    #     completion_sequence_lengths.append(completion_sequence_length)
+        # Find matches with token-based function!
+        match_token, match_index, match_flag = find_first_exact_match(
+            # tokenizer=tokenizer,
+            completions=sequences,
+            token_start_position=prompt_sequence_length,
+            flexible_match=flexible_match,
+            dataset_info=dataset_info,
+            fallback=-1,
+        )
+        match_tokens.append(match_token[0])
+        match_indices.append(match_index[0])
+        match_flags.append(match_flag[0])
+        prompt_sequence_lengths.append(prompt_sequence_length)
+        completion_sequence_lengths.append(completion_sequence_length)
 
 
         
      
-    # result_pkl = {
-    #     "completions": completions,
-    #     "answers": answers,
-    #     "attention_masks": attention_masks,
-    #     "match_tokens": match_tokens,
-    #     "match_indices": match_indices,
-    #     "match_flags": match_flags,
-    #     "max_length": max_length,
-    #     "max_new_tokens": max_new_tokens,
-    #     "prompt_sequence_lengths": prompt_sequence_lengths,
-    #     "completion_sequence_lengths": completion_sequence_lengths,
-    # }
+    result_pkl = {
+        "completions": completions,
+        "answers": answers,
+        "attention_masks": attention_masks,
+        "match_tokens": match_tokens,
+        "match_indices": match_indices,
+        "match_flags": match_flags,
+        "max_length": max_length,
+        "max_new_tokens": max_new_tokens,
+        "prompt_sequence_lengths": prompt_sequence_lengths,
+        "completion_sequence_lengths": completion_sequence_lengths,
+    }
 
-    # result_str_pkl = {
-    #     "completions_str": completions_str,
-    #     "answers_str": answers_str,
-    # }
+    result_str_pkl = {
+        "completions_str": completions_str,
+        "answers_str": answers_str,
+    }
 
-    # if save:
+    if save:
 
-    #     with open(file_path, "wb") as f:
-    #         pickle.dump(result_pkl, f)
+        with open(file_path, "wb") as f:
+            pickle.dump(result_pkl, f)
 
-    #     print(f"All completions saved to {file_path}")
+        print(f"All completions saved to {file_path}")
 
-    #     # Save completions.
-    #     with open(file_path_str, "wb") as f:
-    #         pickle.dump(result_str_pkl, f)
+        # Save completions.
+        with open(file_path_str, "wb") as f:
+            pickle.dump(result_str_pkl, f)
 
-    #     print(f"All completions_str saved to {file_path_str}")
+        print(f"All completions_str saved to {file_path_str}")
 
-    # return {**result_str_pkl, **result_pkl}
+    return {**result_str_pkl, **result_pkl}
 
 
 def compute_logits(
