@@ -2,7 +2,7 @@
 set -e
 
 # === CONFIG ===
-OUT_DIR="/iopsstor/scratch/cscs/astepancic/mera-runs/processed_datasets"
+OUT_DIR="/iopsstor/scratch/cscs/$USER/mera-runs/processed_datasets"
 
 # === RUN ===
 python3 "$(dirname "$0")/../download_datasets.py" \
