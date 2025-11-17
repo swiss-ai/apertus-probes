@@ -10,9 +10,5 @@
 set -euo pipefail
 cd "$HOME/projects/apertus-probes"
 
-# (optional) environment setup
-# module load <stuff>    # or:
-# source ~/.bashrc
-# conda activate <env>
 
 bash ./scripts/mmlu_high_school/cache.sh

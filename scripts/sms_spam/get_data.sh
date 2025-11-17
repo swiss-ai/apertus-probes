@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-OUT_DIR="/iopsstor/scratch/cscs/$USER/apertus/processed_datasets"
+OUT_DIR="/iopsstor/scratch/cscs/$USER/mera-runs/processed_datasets"
 
 python3 "$(dirname "$0")/../download_datasets.py" \
     --out_dir "$OUT_DIR" \

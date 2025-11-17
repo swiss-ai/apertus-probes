@@ -8,6 +8,6 @@ python3 "$ROOT/src/cache/cache_run.py" \
     --batch_size 1 \
     --n_devices 1 \
     --flexible_match \
-    --overwrite \
+    --no-overwrite \
     --device "cuda:0"
 

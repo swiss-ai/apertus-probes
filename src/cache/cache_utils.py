@@ -116,7 +116,7 @@ def get_ground_truth_valid_token_ids(dataset_info: Dict, flexible_match: bool) -
 
 
 def get_logits(
-    model: AutoModelForCausalLM,
+    model: PreTrainedModel,
     inputs: torch.Tensor,
     mode: str,
     position: Optional[int],
@@ -224,7 +224,7 @@ def _flush_shard(save_dir: str, save_key: str):
         _since_last_flush = 0
 
 def get_activation_hook(
-    layer_name: str, mode: str = "all", position: Optional[int] = None
+    layer_index: int, mode: str = "all", position: Optional[int] = None
 ):
     """
     Return a hook function to capture activations based on the specified mode.
@@ -237,13 +237,13 @@ def get_activation_hook(
 
     _printed_layers = set()  # put at file scope
 
-    def hook(module, input, output):
+    def hook(module : torch.nn.Module, input : torch.Tensor, output : torch.Tensor):
         t = output[0] if isinstance(output, (tuple, list)) else output
         # --- NEW: print once per layer ---
-        if layer_name not in _printed_layers:
-            dbg(f"[hook] {layer_name}: out.shape={tuple(getattr(t,'shape',()))} "
+        if layer_index not in _printed_layers:
+            dbg(f"[hook] {layer_index}: out.shape={tuple(getattr(t,'shape',()))} "
                 f"dtype={getattr(t,'dtype',None)} device={getattr(t,'device',None)}")
-            _printed_layers.add(layer_name)
+            _printed_layers.add(layer_index)
 
         if mode == "last_token":
             activations = output[:, -1, :]  # Last token activations.
@@ -259,14 +259,14 @@ def get_activation_hook(
         elif mode == "all":
             activations = output
 
-        if layer_name not in activations_cache:
-            activations_cache[layer_name] = []
-        activations_cache[layer_name].extend(activations.detach().cpu().numpy())
+        if layer_index not in activations_cache:
+            activations_cache[layer_index] = []
+        activations_cache[layer_index].extend(activations.detach().cpu().numpy())
     return hook
 
 
 def register_hooks(
-    model: AutoModelForCausalLM,
+    model: PreTrainedModel,
     mode: str = "all",
     position: Optional[int] = None,
     nr_layers: int = 26,
@@ -306,7 +306,7 @@ def deregister_hooks():
 
 # FIXME: always expect batch_size == 1
 def collect_activations(
-    model: AutoModelForCausalLM,
+    model: PreTrainedModel,
     tokenizer,
     completions: List[np.ndarray],
     nr_layers: int = 26,
@@ -319,7 +319,7 @@ def collect_activations(
     overwrite: bool = True,
     use_cache: bool = False,
     disable_tdqm: bool = False,
-) -> Dict[str, torch.Tensor]:
+) -> Dict[int, List[np.ndarray]]:
     """
     Collect activations for all layers for the given inputs, with specified pooling type and maximum length.
 
@@ -378,7 +378,7 @@ def collect_activations(
 
         # input_tensor = torch.from_numpy(arr).to(model.device, non_blocking=True)
         input_tensor = torch.from_numpy(batch_completions).to(model.device, non_blocking=True)
-        m = gpu_mem()
+        m = _gpu_mem()
         dbg(f"[batch {i}] input={tuple(input_tensor.shape)} "
             f"alloc={m['alloc']:.2f}G reserv={m['reserv']:.2f}G free={m['free']:.2f}G peak={m['peak']:.2f}G")
 
@@ -387,7 +387,7 @@ def collect_activations(
             with torch.inference_mode():    
                 model(input_tensor, use_cache=use_cache, return_dict=True)
         except Exception as e:
-            m = gpu_mem()
+            m = _gpu_mem()
             dbg(f"[OOM] batch={i} alloc={m['alloc']:.2f}G reserv={m['reserv']:.2f}G "
             f"free={m['free']:.2f}G peak={m['peak']:.2f}G :: {e}")
             torch.cuda.memory._dump_snapshot("cuda_snapshot.pickle")
@@ -395,7 +395,7 @@ def collect_activations(
 
             raise Exception(f"Out of memory on batch {i}")
 
-        m = gpu_mem()
+        m = _gpu_mem()
         dbg(f"[batch {i}] after  alloc={m['alloc']:.2f}G reserv={m['reserv']:.2f}G "
             f"free={m['free']:.2f}G peak={m['peak']:.2f}G")
 

@@ -40,6 +40,7 @@ def prompt_mmlu(question: str, labels: List[str], choices: List[str]) -> str:
     return prompt
 
 def prompt_arc(question: str, labels: List[str], choices: List[str]) -> str:
+    print(f"Labels: {labels}")
     assert len(labels) == len(choices), "Labels and choices length mismatch"
     formatted_options = "\n".join(
         [
@@ -108,9 +109,10 @@ def convert_arc_split(split_ds) -> List[Dict[str, Any]]:
       - 'choices': {'label': [...], 'text': [...]}
       - 'answerKey': 'A' | 'B' | ...
     """
+
     rows: List[Dict[str, Any]] = []
     labels = ["A", "B", "C", "D"]
-    for ex in split_ds:
+    for i, ex in enumerate(split_ds):
         question = ex.get("question", "")
         c = ex.get("choices", {}) or {}
         choices = c.get("text", []) or []
@@ -159,10 +161,11 @@ def run_mmlu_high_school(out_dir: str, overwrite: bool):
 
 def run_mmlu_professional(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("cais/mmlu", "all")
+    rows = []
     for split in ds.keys():
-        rows = convert_mmlu_split(ds[split], category_prefix="professional_")
-        outp = os.path.join(out_dir, "mmlu_professional", "all", f"{split}.jsonl")
-        write_jsonl(rows, outp, overwrite)
+        rows.extend(convert_mmlu_split(ds[split], category_prefix="professional_"))
+    outp = os.path.join(out_dir, "mmlu_professional", f"dataset.jsonl")
+    write_jsonl(rows, outp, overwrite)
 
 def run_arc_easy(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("allenai/ai2_arc", "ARC-Easy")
@@ -183,11 +186,13 @@ def run_sms_spam(out_dir: str, overwrite: bool):
     Try common IDs. If the first fails on your cluster mirror, try the next.
     You can swap these in your environment if you already know the exact one you use.
     """
-    ds: DatasetDict = load_dataset("ucirvine/sms-spam")
+    ds: DatasetDict = load_dataset("ucirvine/sms_spam", None)
+    rows = []
     for split in ds.keys():
-        rows = convert_sms_spam_split(ds[split])
-        outp = os.path.join(out_dir, "sms_spam", "default", f"{split}.jsonl")
-        write_jsonl(rows, outp, overwrite)
+        rows.extend(convert_sms_spam_split(ds[split]))
+    outp = os.path.join(out_dir, "sms_spam", f"dataset.jsonl")
+    write_jsonl(rows, outp, overwrite)
+    
 
 
 # -----------------------------

@@ -50,8 +50,6 @@ dataset_info = {
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
         "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
     },
     "mmlu_high_school": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -67,8 +65,6 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
     },
     "mmlu_professional": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -81,16 +77,7 @@ dataset_info = {
         "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "answer",
-        "SUB_TASKS": [
-            "professional_accounting",
-            "professional_law",
-            "professional_medicine",
-            "professional_psychology",
-        ],
         "NR_TRAINING_SAMPLES": 2601,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
     },
     "ARC-Easy": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -104,8 +91,19 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 5000,
-        "NR_REF_SAMPLES": 250,
-        "NR_TEST_SAMPLES": 250,
+    },
+    "ARC-Challenge": {
+        "CLASSES": [chr(i) for i in range(65, 69)],
+        "CLASS_LABEL_TO_INDEX": {chr(i): i - 65 for i in range(65, 69)},
+        "CLASS_INDEX_TO_LABEL": {i - 65: chr(i) for i in range(65, 69)},
+        "CLASS_LABEL_SEMANTIC": {
+            chr(i): generate_text_variants(chr(i), remove_lower=True)
+            for i in range(65, 69)
+        },
+        "DATASET_NAME_HF": "ai2_arc",
+        "MAX_LENGTH": 250,
+        "MAX_NEW_TOKENS": 100,
+        "NR_TRAINING_SAMPLES": 5000,
     }
 }
 
@@ -125,18 +123,13 @@ class TaskConfig:
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     nr_samples: Optional[int] = None
-    nr_test_samples: Optional[int] = None
-    nr_ref_samples: Optional[int] = None
 
     def __post_init__(self):
         print(f"[INFO] Initalising {self.dataset_name}")
         self.dataset_info = dataset_info[self.dataset_name]
         if self.nr_samples is None:
             self.nr_samples = self.dataset_info["NR_TRAINING_SAMPLES"]
-        if self.nr_test_samples is None:
-            self.nr_test_samples = self.dataset_info["NR_TEST_SAMPLES"]
-        if self.nr_ref_samples is None:
-            self.nr_ref_samples = self.dataset_info["NR_REF_SAMPLES"]
+
 
         self.dataset_name = self.dataset_name
         self.dataset_name_hf = self.dataset_info["DATASET_NAME_HF"]
@@ -271,7 +264,7 @@ class DatasetHandler:
             f"[INFO] VALID_GROUND_TRUTH_TOKEN_IDS updated: {self.dataset_info['VALID_GROUND_TRUTH_TOKEN_IDS']}"
         )
 
-    def _load_dataset(self) -> Tuple[List[str], List[str]]:
+    def _load_dataset(self) -> Tuple[List[str], List[int]]:
 
         jsonl_path = f"{self.config.cache_dir}{self.config.dataset_name}/dataset.jsonl"
         with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -279,7 +272,7 @@ class DatasetHandler:
 
         required_fields = {"question_with_prompt", "answer"}
         questions_with_prompt: List[str] = []
-        answers: List[str] = []
+        answers: List[int] = []
 
         for idx, record in enumerate(raw_records, start=1):
 
@@ -289,7 +282,7 @@ class DatasetHandler:
                     f"Missing expected fields {missing} in record {idx} from {jsonl_path}"
                 )
             questions_with_prompt.append(record["question_with_prompt"])
-            answers.append(record["answer"])
+            answers.append(self.dataset_info["CLASS_LABEL_TO_INDEX"][record["answer"]])
 
         return questions_with_prompt, answers
 
