@@ -112,10 +112,18 @@ def convert_arc_split(split_ds) -> List[Dict[str, Any]]:
 
     rows: List[Dict[str, Any]] = []
     labels = ["A", "B", "C", "D"]
+    anomaly = 0
     for i, ex in enumerate(split_ds):
         question = ex.get("question", "")
         c = ex.get("choices", {}) or {}
         choices = c.get("text", []) or []
+        if len(choices) < 4:
+            for i in range(len(choices), 4):
+                choices.append("N/A")
+            anomaly += 1
+        if len(choices) > 4:
+            choices = choices[:4]
+            anomaly += 1
         # Some variants also carry labels; we normalize to A.. as presentation only
         answer_letter = ex.get("answerKey", "") or ""
         row = {
@@ -125,6 +133,7 @@ def convert_arc_split(split_ds) -> List[Dict[str, Any]]:
             "choices": choices,
         }
         rows.append(row)
+        print(f'anomaly count: {anomaly} over {i+1} examples')
     return rows
 
 def convert_sms_spam_split(split_ds) -> List[Dict[str, Any]]:
