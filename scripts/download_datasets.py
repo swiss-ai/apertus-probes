@@ -40,7 +40,6 @@ def prompt_mmlu(question: str, labels: List[str], choices: List[str]) -> str:
     return prompt
 
 def prompt_arc(question: str, labels: List[str], choices: List[str]) -> str:
-    print(f"Labels: {labels}")
     assert len(labels) == len(choices), "Labels and choices length mismatch"
     formatted_options = "\n".join(
         [
@@ -118,14 +117,21 @@ def convert_arc_split(split_ds) -> List[Dict[str, Any]]:
         c = ex.get("choices", {}) or {}
         choices = c.get("text", []) or []
         if len(choices) < 4:
-            for i in range(len(choices), 4):
-                choices.append("N/A")
+            # for i in range(len(choices), 4):
+
+            #     choices.append("N/A")
+            
             anomaly += 1
+            continue
         if len(choices) > 4:
             choices = choices[:4]
             anomaly += 1
+            continue
         # Some variants also carry labels; we normalize to A.. as presentation only
         answer_letter = ex.get("answerKey", "") or ""
+        if answer_letter not in labels:
+            anomaly += 1
+            continue
         row = {
             "question": question,
             "question_with_prompt": prompt_arc(question, labels, choices),
@@ -133,7 +139,7 @@ def convert_arc_split(split_ds) -> List[Dict[str, Any]]:
             "choices": choices,
         }
         rows.append(row)
-        print(f'anomaly count: {anomaly} over {i+1} examples')
+    print(f'anomaly count: {anomaly} over {len(split_ds)} examples')
     return rows
 
 def convert_sms_spam_split(split_ds) -> List[Dict[str, Any]]:
@@ -178,17 +184,20 @@ def run_mmlu_professional(out_dir: str, overwrite: bool):
 
 def run_arc_easy(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("allenai/ai2_arc", "ARC-Easy")
+
+    rows = []
     for split in ds.keys():
-        rows = convert_arc_split(ds[split])
-        outp = os.path.join(out_dir, "arc_easy", "ARC-Easy", f"{split}.jsonl")
-        write_jsonl(rows, outp, overwrite)
+        rows.extend(convert_arc_split(ds[split]))
+    outp = os.path.join(out_dir, "ARC-Easy", f"dataset.jsonl")
+    write_jsonl(rows, outp, overwrite)
 
 def run_arc_challenge(out_dir: str, overwrite: bool):
     ds: DatasetDict = load_dataset("allenai/ai2_arc", "ARC-Challenge")
+    rows = []
     for split in ds.keys():
-        rows = convert_arc_split(ds[split])
-        outp = os.path.join(out_dir, "arc_challenge", "ARC-Challenge", f"{split}.jsonl")
-        write_jsonl(rows, outp, overwrite)
+        rows.extend(convert_arc_split(ds[split]))
+    outp = os.path.join(out_dir, "ARC-Challenge", f"dataset.jsonl")
+    write_jsonl(rows, outp, overwrite)
 
 def run_sms_spam(out_dir: str, overwrite: bool):
     """
@@ -211,8 +220,8 @@ ALL_DATASETS = {
     "mmlu_high_school": run_mmlu_high_school,
     "mmlu_professional": run_mmlu_professional,
     "sms_spam": run_sms_spam,
-    "arc_easy": run_arc_easy,
-    "arc_challenge": run_arc_challenge,
+    "ARC-Easy": run_arc_easy,
+    "ARC-Challenge": run_arc_challenge,
 }
 
 def parse_args():
