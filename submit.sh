@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# Easy-to-use wrapper script for submitting jobs with sbatch
+# This script automatically sets descriptive job names based on task, model, and dataset
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+# Load model aliases (same as in run_task.sh)
+declare -A MODELS
+MODELS["apertus"]="swiss-ai/Apertus-8B-Instruct-2509"
+MODELS["apertus-8b"]="swiss-ai/Apertus-8B-Instruct-2509"
+MODELS["llama"]="meta-llama/Llama-3.1-8B-Instruct"
+
+# Available tasks
+TASKS=("cache" "postprocess" "train_probes")
+
+# Available datasets (same as in run_task.sh)
+DATASETS=(
+    "sms_spam"
+    "mmlu_pro_natural_science"
+    "mmlu_high_school"
+    "mmlu_professional"
+    "ARC-Easy"
+    "ARC-Challenge"
+)
+
+# Function to list available models
+list_models() {
+    echo "Available model aliases:"
+    echo ""
+    for alias in "${!MODELS[@]}"; do
+        printf "  %-20s -> %s\n" "$alias" "${MODELS[$alias]}"
+    done | sort
+    echo ""
+    echo "Usage: --model <alias> or --model_name <full_name>"
+}
+
+# Function to list available datasets
+list_datasets() {
+    echo "Available datasets:"
+    echo ""
+    for dataset in "${DATASETS[@]}"; do
+        echo "  $dataset"
+    done | sort
+    echo ""
+}
+
+# Function to check if dataset is valid
+is_valid_dataset() {
+    local dataset="$1"
+    for valid_dataset in "${DATASETS[@]}"; do
+        if [ "$dataset" == "$valid_dataset" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Parse arguments
+TASK=""
+MODEL_ALIAS=""
+MODEL_NAME=""
+DATASET_NAME=""
+SBATCH_ARGS=()
+SCRIPT_ARGS=()
+SHOW_STATUS=false
+SHOW_HELP=false
+RUN_LOCAL=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --model)
+            MODEL_ALIAS="$2"
+            SCRIPT_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --model_name)
+            MODEL_NAME="$2"
+            SCRIPT_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --dataset_name)
+            DATASET_NAME="$2"
+            SCRIPT_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --time|-t)
+            SBATCH_ARGS+=("--time=$2")
+            shift 2
+            ;;
+        --gpus|-g)
+            SBATCH_ARGS+=("--gpus-per-node=$2")
+            shift 2
+            ;;
+        --account|-A)
+            SBATCH_ARGS+=("--account=$2")
+            shift 2
+            ;;
+        --partition|-p)
+            SBATCH_ARGS+=("--partition=$2")
+            shift 2
+            ;;
+        --status|--check|-s)
+            SHOW_STATUS=true
+            shift
+            ;;
+        --local|--run-local)
+            RUN_LOCAL=true
+            shift
+            ;;
+        --help|-h)
+            SHOW_HELP=true
+            shift
+            ;;
+        --list-models)
+            list_models
+            exit 0
+            ;;
+        --list-datasets)
+            list_datasets
+            exit 0
+            ;;
+        cache|postprocess|train_probes)
+            TASK="$1"
+            SCRIPT_ARGS+=("$1")
+            shift
+            ;;
+        *)
+            SCRIPT_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Show help
+if [ "$SHOW_HELP" = true ]; then
+    cat << EOF
+Usage: submit.sh <task> --model <alias> --dataset_name <dataset> [options]
+
+Submit jobs to SLURM or run locally with automatic parameter validation.
+
+Commands:
+  --list-models             List available model aliases
+  --list-datasets           List available datasets
+  --status, -s              Show your job status
+
+Arguments:
+  <task>                    Task to run: cache, postprocess, or train_probes
+  --model <alias>           Model alias (use --list-models to see options)
+  --dataset_name <dataset>  Dataset name (required)
+  
+Execution modes:
+  --local, --run-local      Run locally instead of submitting with sbatch
+
+SBATCH options (only used when not using --local):
+  --time, -t <time>         Time limit (e.g., 06:00:00)
+  --gpus, -g <num>          Number of GPUs (default: 1)
+  --account, -A <account>   Account name (default: infra01)
+  --partition, -p <part>    Partition (default: normal)
+
+Other options:
+  --help, -h                Show this help message
+
+Examples:
+  # Submit with sbatch (default):
+  ./submit.sh cache --model apertus --dataset_name "mmlu_professional"
+  ./submit.sh postprocess --model apertus --dataset_name "ARC-Challenge" --time 12:00:00
+  
+  # Run locally:
+  ./submit.sh --local cache --model apertus --dataset_name "mmlu_professional"
+  ./submit.sh --local train_probes --model apertus --dataset_name "sms_spam"
+  
+  # List options:
+  ./submit.sh --list-models
+  ./submit.sh --list-datasets
+
+The script automatically creates descriptive job names like:
+  cache_Apertus-8B-Instruct-2509_mmlu_professional
+  postprocess_Apertus-8B-Instruct-2509_ARC-Challenge
+EOF
+    exit 0
+fi
+
+# Show status
+if [ "$SHOW_STATUS" = true ] && [ -z "$TASK" ]; then
+    echo "Your SLURM jobs:"
+    squeue -u "$USER" -o "%.10i %.20j %.8T %.10M %.6D %R"
+    exit 0
+fi
+
+# Validate required arguments
+if [ -z "$TASK" ]; then
+    echo "Error: Task is required"
+    echo "Usage: submit.sh <task> --model <alias> --dataset_name <dataset> [options]"
+    echo "Available tasks: ${TASKS[*]}"
+    echo "Run './submit.sh --help' for more information"
+    exit 1
+fi
+
+# Validate task
+if [[ ! " ${TASKS[*]} " =~ " ${TASK} " ]]; then
+    echo "Error: Invalid task '$TASK'"
+    echo "Available tasks: ${TASKS[*]}"
+    exit 1
+fi
+
+if [ -z "$DATASET_NAME" ]; then
+    echo "Error: --dataset_name is required"
+    echo "Usage: submit.sh <task> --model <alias> --dataset_name <dataset> [options]"
+    exit 1
+fi
+
+# Validate dataset
+if ! is_valid_dataset "$DATASET_NAME"; then
+    echo "Error: Invalid dataset '$DATASET_NAME'"
+    echo "Available datasets:"
+    for dataset in "${DATASETS[@]}"; do
+        echo "  $dataset"
+    done | sort
+    exit 1
+fi
+
+# Get model name from alias if needed
+if [ -n "$MODEL_ALIAS" ] && [ -z "$MODEL_NAME" ]; then
+    if [ -n "${MODELS[$MODEL_ALIAS]:-}" ]; then
+        MODEL_NAME="${MODELS[$MODEL_ALIAS]}"
+    else
+        echo "Error: Unknown model alias '$MODEL_ALIAS'"
+        echo "Available model aliases:"
+        for alias in "${!MODELS[@]}"; do
+            printf "  %-20s -> %s\n" "$alias" "${MODELS[$alias]}"
+        done | sort
+        echo ""
+        echo "Use --model_name <full_name> to use a model not in the alias list"
+        exit 1
+    fi
+fi
+
+if [ -z "$MODEL_NAME" ]; then
+    echo "Error: --model <alias> or --model_name <full_name> is required"
+    echo ""
+    echo "Available model aliases:"
+    for alias in "${!MODELS[@]}"; do
+        printf "  %-20s -> %s\n" "$alias" "${MODELS[$alias]}"
+    done | sort
+    echo ""
+    echo "Usage: submit.sh <task> --model <alias> --dataset_name <dataset> [options]"
+    exit 1
+fi
+
+# Create descriptive job name
+MODEL_SHORT=$(basename "$MODEL_NAME")
+DATASET_CLEAN=$(echo "$DATASET_NAME" | tr ' ' '_' | tr '/' '_')
+JOB_NAME="${TASK}_${MODEL_SHORT}_${DATASET_CLEAN}"
+
+# Truncate if too long (SLURM limit is 100 chars)
+if [ ${#JOB_NAME} -gt 100 ]; then
+    JOB_NAME="${JOB_NAME:0:100}"
+fi
+
+# Set default time to 6 hours if not specified
+TIME_SPECIFIED=false
+for arg in "${SBATCH_ARGS[@]}"; do
+    if [[ "$arg" == --time=* ]]; then
+        TIME_SPECIFIED=true
+        break
+    fi
+done
+if [ "$TIME_SPECIFIED" = false ] && [ "$RUN_LOCAL" = false ]; then
+    SBATCH_ARGS+=("--time=06:00:00")
+fi
+
+# Execute locally or with sbatch
+if [ "$RUN_LOCAL" = true ]; then
+    # Run locally
+    echo "========================================"
+    echo "Running locally..."
+    echo "  Task:    $TASK"
+    echo "  Model:   $MODEL_NAME"
+    echo "  Dataset: $DATASET_NAME"
+    echo "========================================"
+    echo ""
+    
+    # Run the task script directly (bypass sbatch)
+    bash "$SCRIPT_DIR/run_task.sh" "${SCRIPT_ARGS[@]}"
+else
+    # Submit with sbatch
+    echo "========================================"
+    echo "Submitting job to SLURM..."
+    echo "  Task:    $TASK"
+    echo "  Model:   $MODEL_NAME"
+    echo "  Dataset: $DATASET_NAME"
+    echo "  Job name: $JOB_NAME"
+    echo "========================================"
+    
+    JOB_ID=$(sbatch --job-name="$JOB_NAME" --chdir="$SCRIPT_DIR" "${SBATCH_ARGS[@]}" "$SCRIPT_DIR/run_task.sh" "${SCRIPT_ARGS[@]}" 2>&1 | grep -oP '\d+' | tail -1)
+    
+    if [ -n "$JOB_ID" ]; then
+        echo "Job submitted successfully!"
+        echo "  Job ID: $JOB_ID"
+        echo "  Job name: $JOB_NAME"
+        echo ""
+        
+        if [ "$SHOW_STATUS" = true ]; then
+            sleep 1
+            echo "Job status:"
+            squeue -j "$JOB_ID" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null || echo "  (Job may not appear in queue yet)"
+        else
+            echo "Use 'squeue -u $USER' to check job status"
+            echo "Use 'tail -f logs/${JOB_NAME}_${JOB_ID}.out' to follow the log"
+        fi
+    else
+        echo "Error: Failed to submit job"
+        exit 1
+    fi
+fi
+

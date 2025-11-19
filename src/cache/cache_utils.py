@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import glob
 import torch
 from contextlib import suppress
 from torch.cuda.amp import autocast
@@ -204,7 +205,7 @@ SHARD_SIZE = 256       # tweak to taste (e.g., 512/1024)
 _since_last_flush = 0  # examples since last shard
 _shard_idx = 0         # shard counter
 
-def _flush_shard(save_dir: str, save_key: str):
+def _flush_shard(save_dir: str):
     """Write one shard per layer, then clear in-RAM buffers."""
     global activations_cache, _shard_idx, _since_last_flush
     wrote_any = False
@@ -213,7 +214,7 @@ def _flush_shard(save_dir: str, save_key: str):
         if not chunks:
             continue
 
-        fp = os.path.join(save_dir, f"{save_key}activations_{layer}_part{_shard_idx:05d}.pkl")
+        fp = os.path.join(save_dir, f"activations_{layer}_part{_shard_idx:05d}.pkl")
         with open(fp, "wb") as f:
             pickle.dump(chunks, f, protocol=pickle.HIGHEST_PROTOCOL)
             print(f"Saved shard {_shard_idx} for layer {layer} to {fp}")
@@ -314,7 +315,6 @@ def collect_activations(
     mode: str = "last_token",
     position: Optional[int] = None,
     save_dir: str = "../runs/",
-    save_key: str = "activations",
     save: bool = True,
     overwrite: bool = True,
     use_cache: bool = False,
@@ -342,15 +342,35 @@ def collect_activations(
     _shard_idx = 0
 
     if not overwrite:
-        nr_keys = 0
+        # Check if shard files exist for all layers and verify expected count
+        # Expected shard count = ceil(len(completions) / SHARD_SIZE)
+        # completions is already loaded and passed as parameter
+        num_completions = len(completions)
+        expected_num_shards = (num_completions + SHARD_SIZE - 1) // SHARD_SIZE  # ceil division
+        print(f"Expected {expected_num_shards} shard(s) based on {num_completions} completions (SHARD_SIZE={SHARD_SIZE})")
+        
+        all_layers_have_shards = True
         for layer in activations_cache:
-            file_path = f"{save_dir}/{save_key}activations_{layer}.pkl"
-            if os.path.exists(file_path):
-                nr_keys += 1
-                with open(file_path, "rb") as f:
-                    activations_cache[layer] = pickle.load(f)
-        if nr_keys == len(activations_cache):
-            print("All keys found for activations_cache, load instead.")
+            pattern = os.path.join(save_dir, f"activations_{layer}_part*.pkl")
+            shard_files = sorted(glob.glob(pattern))
+            num_shards = len(shard_files)
+            
+            if num_shards == 0:
+                all_layers_have_shards = False
+                print(f"Layer {layer}: No shard files found")
+                break
+            
+            if num_shards < expected_num_shards:
+                print(f"Layer {layer}: Found {num_shards} shard(s), expected {expected_num_shards} - incomplete")
+                all_layers_have_shards = False
+                break
+            elif num_shards > expected_num_shards:
+                print(f"Layer {layer}: Found {num_shards} shard(s), expected {expected_num_shards} - more than expected (OK)")
+            else:
+                print(f"Layer {layer}: Found {num_shards} shard(s), expected {expected_num_shards} - complete ✓")
+        
+        if all_layers_have_shards:
+            print(f"All layers have complete shard files (expected {expected_num_shards} shards), skipping activation collection.")
             return {}
 
     # Register hooks with specified pooling type.
@@ -402,7 +422,7 @@ def collect_activations(
 # --- STREAMING LOGIC: aggregate N=SHARD_SIZE examples before writing ---
         _since_last_flush += batch_size
         if _since_last_flush >= SHARD_SIZE:
-            _flush_shard(save_dir, save_key)
+            _flush_shard(save_dir)
         del input_tensor
 
 
@@ -412,19 +432,14 @@ def collect_activations(
     deregister_hooks()
     print("Hooks successfully deregistered.")
 
-    # if save:
-    #     # Save all activations as a single file
-    #     for layer in activations_cache:
-    #         file_path = f"{save_dir}/{save_key}activations_{layer}.pkl"
-    #         with open(file_path, "wb") as f:
-    #             pickle.dump(activations_cache[layer], f)
+
 
     #     print(f"All activations saved to {file_path}")
     # final flush for leftovers (if any not yet written)
-    _flush_shard(save_dir, save_key)
+    _flush_shard(save_dir)
     # save must be True
     if save:
-        print(f"Streamed activations to: {save_dir}/{save_key}activations_{i}_part*.pkl")
+        print(f"Streamed activations to: {save_dir}/activations_{i}_part*.pkl")
 
     return activations_cache
 
@@ -432,13 +447,13 @@ def collect_activations(
 def generate_completions(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizer,
+    tokenizer_kwargs: dict,
     prompts: List[str],
     dataset_info: Dict,
     batch_size: int,
     device: torch.device,
     flexible_match: bool,
     save_dir: str,
-    save_key: str,
     save: bool = True,
     overwrite: bool = True,
     grad: bool = False,
@@ -449,8 +464,8 @@ def generate_completions(
     """Generates completions and saves the result."""
 
     os.makedirs(save_dir, exist_ok=True)
-    file_path = f"{save_dir}/{save_key}completions.pkl"
-    file_path_str = f"{save_dir}/{save_key}completions_str.pkl"
+    file_path = f"{save_dir}completions.pkl"
+    file_path_str = f"{save_dir}completions_str.pkl"
 
     if not overwrite:
         if os.path.exists(file_path):
@@ -485,11 +500,11 @@ def generate_completions(
         batch_prompts = prompts[i : i + batch_size]
         prompts_tokenized = tokenizer(
             batch_prompts,
-            # **tokenizer_kwargs,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=max_length,
+            **tokenizer_kwargs
+            # return_tensors="pt",
+            # padding=True,  # DO NOT USE - padding disabled
+            # truncation=True,
+            # max_length=max_length,
         )
         input_ids = prompts_tokenized.input_ids.to(device)
         attention_mask = prompts_tokenized.attention_mask.to(device)
@@ -615,7 +630,6 @@ def compute_logits(
     flexible_match: bool,
     dataset_info: Dict,
     save_dir: str,
-    save_key: str,
     save: bool = True,
     compute_class_logits: bool = True,
     overwrite: bool = True,
@@ -625,8 +639,8 @@ def compute_logits(
 ) -> np.ndarray:
     """Computes logits for the completions and saves them."""
     prefix = "" if not compute_class_logits else "class_"
-    file_path = f"{save_dir}{save_key}{prefix}logits.pkl"
-    file_path_softmax = f"{save_dir}{save_key}{prefix}softmax.pkl"
+    file_path = f"{save_dir}{prefix}logits.pkl"
+    file_path_softmax = f"{save_dir}{prefix}softmax.pkl"
 
     if not overwrite:
         if os.path.exists(file_path) and os.path.exists(file_path_softmax):
@@ -694,7 +708,6 @@ def compute_targets(
     dataset_info: dict,
     match_indices: List[int],
     save_dir: str,
-    save_key: str,
     save: bool = True,
     overwrite: bool = True,
 ) -> Dict[str, List]:
@@ -705,7 +718,7 @@ def compute_targets(
     # print("class_index_to_label)")
     # print(class_index_to_label)
     # max_length = dataset_info["MAX_LENGTH"]
-    file_path = f"{save_dir}{save_key}targets.pkl"
+    file_path = f"{save_dir}targets.pkl"
 
     if not overwrite:
         if os.path.exists(file_path):
@@ -781,16 +794,14 @@ def compute_targets(
 
 def load_saved_data(
     save_dir: str,
-    save_key: str,
     data_type: str,
     layer: Optional[int] = None,
 ) -> Union[Dict[str, Any], np.ndarray]:
     """
-    Loads specific saved data based on save_key, data_type, and optionally, a specific layer.
+    Loads specific saved data based on data_type, and optionally, a specific layer.
 
     Args:
         save_dir (str): Directory where the data is saved.
-        save_key (str): Unique key for the saved data.
         data_type (str): Type of data to load. Options include:
             - "completions"
             - "completions_str"
@@ -804,10 +815,11 @@ def load_saved_data(
     Returns:
         Union[Dict[str, Any], np.ndarray]: Loaded data, format depends on data_type and layer.
     """
+    print("save_dir", save_dir)
     if data_type in {"activations", "sae_activations"}:
         save_dir += f"{data_type}"
 
-    file_path = f"{save_dir}{save_key}_{data_type}"
+    file_path = f"{save_dir}{data_type}"
 
     if data_type in {
         "class_logits",
@@ -832,6 +844,7 @@ def load_saved_data(
             f"Unsupported data_type: {data_type}. Options are 'completions', 'logits', 'softmax_scores', 'targets', "
             f"'activations', 'sae_enc_cache', or 'sae_dec_cache'."
         )
+    
 
     # Return full data if no layer is specified!
     return data

@@ -122,13 +122,10 @@ class TaskConfig:
     batch_size: int = 1
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
-    nr_samples: Optional[int] = None
 
     def __post_init__(self):
         print(f"[INFO] Initalising {self.dataset_name}")
         self.dataset_info = dataset_info[self.dataset_name]
-        if self.nr_samples is None:
-            self.nr_samples = self.dataset_info["NR_TRAINING_SAMPLES"]
 
 
         self.dataset_name = self.dataset_name
@@ -165,6 +162,7 @@ class ModelHandler:
         tokenizer = AutoTokenizer.from_pretrained(
             self.config.model_name, **self.config.model_kwargs
         )
+        print("[DEBUG] Tokenizer kwargs:", self.config.tokenizer_kwargs)
         return tokenizer
 
     def _load_model(self):
@@ -174,6 +172,8 @@ class ModelHandler:
         model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name, **self.config.model_kwargs
         )
+
+        print("[DEBUG] Model kwargs:", self.config.model_kwargs)
         model.eval()
         return model
 

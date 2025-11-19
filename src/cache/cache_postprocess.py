@@ -14,9 +14,7 @@ if __name__ == "__main__":
         description="Postprocess cache to use for probe training."
     )
     parser.add_argument("--nr_layers", required=True, type=int, help="Number of layers.")
-    parser.add_argument(
-        "--save_cache_key", type=str, required=True, help="Save key for the cache."
-    )
+
     parser.add_argument(
         "--save_dir",
         required=True,
@@ -37,10 +35,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"Arguments: {args}")
 
-    nr_layers, dataset_name, save_cache_key, save_dir, model_name = (
+    nr_layers, dataset_name, save_dir, model_name = (
         args.nr_layers,
         args.dataset_name,
-        args.save_cache_key,
         args.save_dir,
         args.model_name,
     )
@@ -57,13 +54,12 @@ if __name__ == "__main__":
 
     file_path_cache = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}"
     print("file_path_cache", file_path_cache)
-    print("save_cache_key", save_cache_key)
     
     print(f"[DEBUG] 'nr_layers' set to {nr_layers}.")
 
-    with open(f"{file_path_cache}/{save_cache_key}_targets.pkl", "rb") as f:
+    with open(f"{file_path_cache}/targets.pkl", "rb") as f:
         targets = pickle.load(f)  # torch.load(f, map_location="cuda:0")
-    with open(f"{file_path_cache}/{save_cache_key}_completions.pkl", "rb") as f:
+    with open(f"{file_path_cache}/completions.pkl", "rb") as f:
         completions = pickle.load(f)  # torch.load(f, map_location="cuda:0")
 
     last_matches = completions["prompt_sequence_lengths"]
@@ -80,7 +76,7 @@ if __name__ == "__main__":
         range(nr_layers), desc=f"Processing Layers for {dataset_name}"
     ):
         # Find all shard files for this layer
-        pattern = f"{file_path_cache}/activations/{save_cache_key}_activations_{layer}_part*.pkl"
+        pattern = f"{file_path_cache}/activations/activations_{layer}_part*.pkl"
         shard_files = sorted(glob.glob(pattern))
         assert len(shard_files) > 0, f"No activation files found for layer {layer} with pattern: {pattern}"
         print(f"Found {len(shard_files)} shards for layer {layer}")
@@ -145,7 +141,7 @@ if __name__ == "__main__":
     results[dataset_name]["y_error_sm_exact"] = y_error_sm_exact
     results[dataset_name]["y_error_ce_exact"] = y_error_ce_exact
 
-    file_path_save = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/{save_cache_key}_acts.pkl"
+    file_path_save = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/acts.pkl"
 
     with open(file_path_save, "wb") as f:
         pickle.dump(results[dataset_name], f)

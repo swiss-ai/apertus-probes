@@ -21,7 +21,6 @@ def main(
     save_dir: str,
     model_name: str,
     dataset_names: List[str],
-    nr_samples: int,
     batch_size: int,
     device: str,
     n_devices: int,
@@ -39,7 +38,6 @@ def main(
             token=hf_token,
             cache_dir=cache_dir,
             dataset_name=dataset_name,
-            nr_samples=nr_samples,
             model_name=model_name,
             device=device if device != "" else None,
             nr_devices=n_devices,
@@ -55,7 +53,6 @@ def main(
         save_dir_curr = save_dir + f"{dataset_name}/"
         save_dir_curr += f"{model_name.split('/')[1]}/"
         os.makedirs(save_dir_curr, exist_ok=True)  # uuid.uuid1().hex[:3]uuid
-        save_key = f"{nr_samples}_"
 
         '''
         for i, p in enumerate(dataset_handler.prompts):
@@ -68,13 +65,13 @@ def main(
         completions = generate_completions(
             model=model_handler.model,
             tokenizer=model_handler.tokenizer,
+            tokenizer_kwargs=model_handler.tokenizer_kwargs,
             prompts=dataset_handler.prompts,
             dataset_info=dataset_handler.dataset_info,
             batch_size=batch_size,
             device=model_handler.model.device,
             flexible_match=task_config.flexible_match,
             save_dir=save_dir_curr,
-            save_key=save_key,
             overwrite=overwrite,
         )
 
@@ -88,7 +85,6 @@ def main(
             flexible_match=task_config.flexible_match,
             dataset_info=dataset_handler.dataset_info,
             save_dir=save_dir_curr,
-            save_key=save_key,
             overwrite=overwrite,
         )
         clean_gpus()
@@ -101,7 +97,6 @@ def main(
             prompt_sequence_lengths=completions["prompt_sequence_lengths"],
             match_indices=completions["match_indices"],
             save_dir=save_dir_curr,
-            save_key=save_key,
             overwrite=overwrite
         )
         clean_gpus()
@@ -122,7 +117,6 @@ def main(
                 mode="all",
                 nr_layers=nr_layers,
                 save_dir=save_dir_curr,
-                save_key=save_key,
                 overwrite=overwrite,
             )
 
@@ -142,7 +136,6 @@ def main(
                 n_devices=6,
                 nr_layers=nr_layers,
                 save_dir=save_dir_curr,
-                save_key=save_key,
                 overwrite=overwrite,
                 hf_token=hf_token,
             )
@@ -197,9 +190,7 @@ if __name__ == "__main__":
         ],
         help="Name(s) of the task(s) to load. Provide a single name or a space-separated list.",
     )
-    parser.add_argument(
-        "--nr_samples", type=int, default=3000, help="Number of samples to process."
-    )
+
     parser.add_argument(
         "--batch_size", type=int, default=1, help="The batch_size to process."
     )
@@ -236,7 +227,7 @@ if __name__ == "__main__":
 )
 
     args = parser.parse_args()
-
+    print("[DEBUG] Overwrite:", args.overwrite)
     main(
         args.hf_token,
         args.token_position,
@@ -244,7 +235,6 @@ if __name__ == "__main__":
         args.save_dir,
         args.model_name,
         args.dataset_names,
-        args.nr_samples,
         args.batch_size,
         args.device,
         args.n_devices,

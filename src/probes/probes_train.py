@@ -4,6 +4,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from typing import Tuple, Union
 from sklearn.linear_model import LogisticRegression, Lasso, LinearRegression
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.metrics import (
@@ -38,7 +39,7 @@ def train_probes(
     transform_error: bool = False,
     normalise_error: bool = False,
     token_pos: str = "",
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, dict]:
     """Train linear probes on LM activations using classification and regression targets,
     with support for multiple token positions, feature types (e.g. activations, SAEs),
     model types (Lasso, Logistic, etc.), and evaluation metrics. Applies transformations
@@ -51,9 +52,11 @@ def train_probes(
     model_objects = {}
 
     for feature_name, layer_data in tqdm(features.items(), desc="Processing Features"):
+        print("feature_name", feature_name)
         for layer_idx, (layer_name, layer_features) in tqdm(
             enumerate(layer_data.items()), desc=f"{feature_name} Layers"
         ):
+            print("layer_name", layer_name)
             if selected_layers and layer_name not in selected_layers:
                 continue
             X = np.array(layer_features)
@@ -183,9 +186,6 @@ if __name__ == "__main__":
         "--save_name", type=str, default="", help="Extra name for saving probe."
     )
     parser.add_argument(
-        "--save_cache_key", type=str, default="3000", help="Save key for the cache."
-    )
-    parser.add_argument(
         "--save_dir",
         type=str,
         default="../runs",
@@ -243,7 +243,6 @@ if __name__ == "__main__":
         save_name,
         seed,
         token_pos_all,
-        save_cache_key,
         save_dir,
     ) = (
         args.process_saes.lower() == "true",
@@ -253,7 +252,6 @@ if __name__ == "__main__":
         args.save_name,
         args.seed,
         args.token_pos,
-        args.save_cache_key,
         args.save_dir,
     )
 
@@ -277,9 +275,9 @@ if __name__ == "__main__":
         },
     }
 
-    def initialise_regression_models(seed: int, alphas) -> dict:
+    def initialise_regression_models(seed: int, alphas) -> dict[str, Union[LinearRegression, Lasso]]:
         """Initialise regression models with various hyperparameters."""
-        models = {
+        models : dict[str, Union[Lasso, LinearRegression]] = {
             f"L-{alpha}": Lasso(
                 alpha=alpha, fit_intercept=False, max_iter=2000, random_state=seed
             )
@@ -300,9 +298,9 @@ if __name__ == "__main__":
         }
         return models
 
-    alphas = [0.5, 0.25]
+    alphas = [0.5, 0.25, 0.1]
     models = {
-        "classification": {}, # initalise_classification_models(seed),
+        "classification": initalise_classification_models(seed),
         "regression": initialise_regression_models(seed, alphas),
     }
     error_type = "sm"
@@ -339,7 +337,7 @@ if __name__ == "__main__":
 
             # Get the postprocessed data.
             k = "_with_saes" if process_saes else ""
-            file_path = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/{save_cache_key}_acts{k}.pkl"
+            file_path = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts{k}.pkl"
 
             # Load activations.
             with open(file_path, "rb") as f:
@@ -349,9 +347,10 @@ if __name__ == "__main__":
                     print(f"Could not fully load file {f} — {e}")
 
             # Load targets.
+            save_dir = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/"
+            print("save_dir", save_dir)
             y_targets = load_saved_data(
-                save_dir=f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/",
-                save_key=save_cache_key,
+                save_dir=save_dir,
                 data_type="targets",
             )
 
