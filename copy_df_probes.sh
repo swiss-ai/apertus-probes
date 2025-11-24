@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # Default values
-PRESERVE_STRUCTURE=false
+PRESERVE_STRUCTURE=true
 DRY_RUN=false
 SOURCE_DIR=""
 
