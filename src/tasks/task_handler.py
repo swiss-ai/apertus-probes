@@ -34,6 +34,8 @@ dataset_info = {
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "label",
         "NR_TRAINING_SAMPLES": 3000,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
     },
 
     "mmlu_pro_natural_science": {
@@ -50,6 +52,8 @@ dataset_info = {
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
         "NR_TRAINING_SAMPLES": 3000,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
     },
     "mmlu_high_school": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -65,6 +69,8 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 3000,
+        "NR_REF_SAMPLES": 210,
+        "NR_TEST_SAMPLES": 210,
     },
     "mmlu_professional": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -78,6 +84,8 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 2601,
+        "NR_REF_SAMPLES": 210,
+        "NR_TEST_SAMPLES": 210,
     },
     "ARC-Easy": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -91,6 +99,8 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 5000,
+        "NR_REF_SAMPLES": 210,
+        "NR_TEST_SAMPLES": 210,
     },
     "ARC-Challenge": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -104,6 +114,8 @@ dataset_info = {
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "NR_TRAINING_SAMPLES": 5000,
+        "NR_REF_SAMPLES": 210,
+        "NR_TEST_SAMPLES": 210,
     }
 }
 
@@ -125,6 +137,12 @@ class TaskConfig:
     def __post_init__(self):
         print(f"[INFO] Initalising {self.dataset_name}")
         self.dataset_info = dataset_info[self.dataset_name]
+        if self.nr_samples is None:
+            self.nr_samples = self.dataset_info["NR_TRAINING_SAMPLES"]
+        if self.nr_test_samples is None:
+            self.nr_test_samples = self.dataset_info["NR_TEST_SAMPLES"]
+        if self.nr_ref_samples is None:
+            self.nr_ref_samples = self.dataset_info["NR_REF_SAMPLES"]
 
 
         self.dataset_name = self.dataset_name
@@ -232,7 +250,30 @@ class DatasetHandler:
         self.dataset_info = self.config.dataset_info
         self._update_dataset_info_with_token_ids() 
 
-        self.prompts, self.y_true,  = self._load_dataset() # Loads HF dataset into a Dataset object
+        # self.prompts, self.y_true,  = self._load_dataset() # Loads HF dataset into a Dataset object
+
+        # Load ALL samples from JSONL
+        all_prompts, all_y_true = self._load_dataset()   # lists
+
+        n_train = self.config.nr_samples
+        n_test  = self.config.nr_test_samples
+        n_ref   = self.config.nr_ref_samples
+
+        # Training slice (for activations / probes)
+        self.prompts       = all_prompts[:n_train]
+        self.y_true        = all_y_true[:n_train]
+
+        # Test slice (for steering evaluation)
+        start_test = n_train
+        end_test   = n_train + n_test
+        self.prompts_test  = all_prompts[start_test:end_test]
+        self.y_true_test   = all_y_true[start_test:end_test]
+
+        # Reference slice (for MERA calibration)
+        start_ref = end_test
+        end_ref   = end_test + n_ref
+        self.prompts_ref   = all_prompts[start_ref:end_ref]
+        self.y_true_ref    = all_y_true[start_ref:end_ref]
         
 
 
