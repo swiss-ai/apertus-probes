@@ -26,7 +26,7 @@ ENV/
 Thumbs.db
 
 start_tunnel.sh
-logs/
+logs
 scratch
 *.pickle
 # experiment logs
