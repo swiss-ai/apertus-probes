@@ -35,7 +35,6 @@ def main(
     for dataset_name in dataset_names:
 
         task_config = TaskConfig(
-            token=hf_token,
             cache_dir=cache_dir,
             dataset_name=dataset_name,
             model_name=model_name,
@@ -148,12 +147,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Distributed processing for Gemma model task."
     )
-    parser.add_argument(
-        "--hf_token",
-        type=str,
-        default="None",
-        help="Huggingface token.",
-    )
+   
     parser.add_argument(
         "--token_position",
         type=int,
@@ -163,8 +157,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="../hf-cache/",
-        help="File path for getting the data.",
+        help="Cache directory to retrieve the data.",
     )
     parser.add_argument(
         "--save_dir",
@@ -229,7 +222,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print("[DEBUG] Overwrite:", args.overwrite)
     main(
-        args.hf_token,
         args.token_position,
         args.cache_dir,
         args.save_dir,

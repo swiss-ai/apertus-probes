@@ -112,7 +112,6 @@ dataset_info = {
 class TaskConfig:
     """Assumes downloaded in cache dir."""
 
-    token: str
     cache_dir: str
     dataset_name: str
     device: Optional[str]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Script to copy all df_probes_* files from all datasets and models to a specific folder
+# Script to copy all .pkl files from all datasets and models to a specific folder
 #
 # Usage:
 #   ./copy_df_probes.sh <destination_folder> [options]
@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             cat << EOF
 Usage: $0 <destination_folder> [options]
 
-Copy all df_probes_* files from all datasets and models to a specific folder.
+Copy all .pkl files from all datasets and models to a specific folder.
 
 Arguments:
   <destination_folder>    Destination directory where files will be copied
@@ -50,7 +50,7 @@ Options:
   --help, -h              Show this help message
 
 Examples:
-  # Copy all df_probes files to a folder (flat structure):
+  # Copy all .pkl files to a folder (flat structure):
   ./copy_df_probes.sh /path/to/destination
 
   # Copy with preserved directory structure:
@@ -89,6 +89,9 @@ if [ -z "$DEST_DIR" ]; then
     exit 1
 fi
 
+# Remove trailing slash from destination directory to avoid double slashes
+DEST_DIR="${DEST_DIR%/}"
+
 # Set default source directory if not provided
 if [ -z "$SOURCE_DIR" ]; then
     if [ -z "${SCRATCH:-}" ]; then
@@ -96,6 +99,9 @@ if [ -z "$SOURCE_DIR" ]; then
     fi
     SOURCE_DIR="$SCRATCH/mera-runs"
 fi
+
+# Remove trailing slash from source directory to avoid double slashes
+SOURCE_DIR="${SOURCE_DIR%/}"
 
 # Check if source directory exists
 if [ ! -d "$SOURCE_DIR" ]; then
@@ -113,7 +119,7 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 echo "========================================"
-echo "Copying df_probes_* files"
+echo "Copying all .pkl files"
 echo "========================================"
 echo "Source:      $SOURCE_DIR"
 echo "Destination: $DEST_DIR"
@@ -121,22 +127,14 @@ echo "Preserve structure: $PRESERVE_STRUCTURE"
 echo "Dry run:    $DRY_RUN"
 echo ""
 
-# Find all df_probes_* files
+# Find all .pkl files, excluding those in activations folders
 FILES=()
 while IFS= read -r -d '' file; do
     FILES+=("$file")
-done < <(find "$SOURCE_DIR" -type f -name "df_probes_*.pkl" -print0 2>/dev/null || true)
-
-# Also find files named df_probes*.pkl (without underscore after df_probes)
-while IFS= read -r -d '' file; do
-    # Skip files that match df_probes_*.pkl (already found above)
-    if [[ ! "$file" =~ df_probes_.*\.pkl$ ]]; then
-        FILES+=("$file")
-    fi
-done < <(find "$SOURCE_DIR" -type f -name "df_probes*.pkl" -print0 2>/dev/null || true)
+done < <(find "$SOURCE_DIR" -type d -name "activations" -prune -o -type f -name "*.pkl" -print0 2>/dev/null || true)
 
 if [ ${#FILES[@]} -eq 0 ]; then
-    echo "No df_probes_* files found in $SOURCE_DIR"
+    echo "No .pkl files found in $SOURCE_DIR"
     exit 0
 fi
 
@@ -154,24 +152,19 @@ for file in "${FILES[@]}"; do
     
     if [ "$PRESERVE_STRUCTURE" = true ]; then
         # Preserve directory structure
-        dest_file="$DEST_DIR/$rel_path"
+        dest_file="${DEST_DIR}/${rel_path}"
         dest_dir="$(dirname "$dest_file")"
     else
         # Flatten structure: use filename with dataset and model info
         filename="$(basename "$file")"
         # Try to extract dataset and model from path
-        # Path format: .../dataset_name/model_name/df_probes*.pkl
-        # or: .../probes/sub/df_probes_model_name*.pkl
-        if [[ "$rel_path" =~ ^([^/]+)/([^/]+)/df_probes ]]; then
+        # Path format: .../dataset_name/model_name/*.pkl
+        if [[ "$rel_path" =~ ^([^/]+)/([^/]+)/.+\.pkl$ ]]; then
             dataset="${BASH_REMATCH[1]}"
             model="${BASH_REMATCH[2]}"
             # Remove extension, add dataset and model, then add extension back
             base_name="${filename%.pkl}"
             dest_file="$DEST_DIR/${dataset}_${model}_${base_name}.pkl"
-        elif [[ "$rel_path" =~ probes/(sub/)?df_probes_([^/]+)\.pkl ]]; then
-            model="${BASH_REMATCH[2]}"
-            base_name="${filename%.pkl}"
-            dest_file="$DEST_DIR/probes_${base_name}.pkl"
         else
             # Fallback: just use filename
             dest_file="$DEST_DIR/$filename"
