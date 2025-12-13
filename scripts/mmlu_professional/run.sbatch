@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH -A infra01
 #SBATCH -p normal
-#SBATCH -t 01:00:00
+#SBATCH -t 10:00:00
 #SBATCH -J mmlu_pro
 #SBATCH -o logs/%x-%j.out
 #SBATCH --gpus-per-node=1
@@ -12,13 +12,16 @@
 #   sbatch --export=S=postprocess scripts/mmlu_professional/run.sbatch
 #   sbatch --export=S=train_probes scripts/mmlu_professional/run.sbatch
 
+export HF_TOKEN="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"
+export HUGGINGFACE_HUB_TOKEN="$HF_TOKEN"
+export TRANSFORMERS_CACHE="$SCRATCH/hf_cache"
+
 set -euo pipefail
 cd "$HOME/projects/apertus-probes"
 
-# Available steps
-STEPS=("cache" "postprocess" "train_probes")
 
-# Get step from environment variable (short name: S)
+STEPS=("get_data" "cache" "postprocess" "train_probes" "steer_1" "steer_2" "steer_3" "steer_4" "steer_5" "steer_arc_easy" "steer_arc_challenge" "steer_mmlu_high_school" "steer_sms_spam" "all")
+
 STEP="${S:-}"
 
 if [ -z "$STEP" ]; then
@@ -28,28 +31,33 @@ if [ -z "$STEP" ]; then
     exit 1
 fi
 
-# Validate step
 if [[ ! " ${STEPS[*]} " =~ " ${STEP} " ]]; then
     echo "Error: Invalid step '$STEP'"
     echo "Available steps: ${STEPS[*]}"
     exit 1
 fi
 
-# Construct script path
-SCRIPT_PATH="scripts/mmlu_professional/${STEP}.sh"
+run_step() {
+    local name="$1"
+    local path="scripts/mmlu_professional/${name}.sh"
+    echo "-----------------------------------------------------------"
+    echo "Running: $name"
+    echo "Script: $path"
+    echo "-----------------------------------------------------------"
+    bash "$path"
+}
 
-if [ ! -f "$SCRIPT_PATH" ]; then
-    echo "Error: Script not found: $SCRIPT_PATH"
-    exit 1
+if [ "$STEP" = "all" ]; then
+    run_step "get_data"
+    run_step "cache"
+    run_step "postprocess"
+    run_step "train_probes"
+    run_step "steer_1"
+    run_step "steer_2"
+    run_step "steer_3"
+    run_step "steer_4"
+    run_step "steer_5"
+else
+    run_step "$STEP"
 fi
-
-echo "Running $STEP for mmlu_professional"
-echo "Script: $SCRIPT_PATH"
-
-# (optional) environment setup
-# module load <stuff>    # or:
-# source ~/.bashrc
-# conda activate <env>
-
-bash "$SCRIPT_PATH"
 

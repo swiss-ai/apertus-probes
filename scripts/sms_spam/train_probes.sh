@@ -1,9 +1,8 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 python3 "$ROOT/src/probes/probes_train.py" \
     --save_dir "$SCRATCH/mera-runs/" \
-    --save_cache_key "1000" \
     --dataset_names "sms_spam" \
-    --model_names "swiss-ai/Apertus-8B-Instruct-2509" \
+    --model_names "meta-llama/Meta-Llama-3-8B" \
     --nr_layers "32" \
     --token_pos "" "_exact" \
     --process_saes "False" \

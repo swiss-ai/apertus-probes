@@ -81,6 +81,13 @@ parser.add_argument(
     help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
 )
 parser.add_argument(
+    "--probe_dataset_name",
+    type=str,
+    default=None,
+    help="Dataset from which probes were trained (for cross-dataset steering). "
+         "If None, use the same dataset as the steering target.",
+)
+parser.add_argument(
     "--top_k_sets",
     nargs="+",
     type=int,
@@ -177,10 +184,19 @@ for model_name in model_names:
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
         nr_layers = model_handler.nr_layers
         k = "_with_saes" if process_saes else ""
-        file_path_acts = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts{k}.pkl"
+        # file_path_acts = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts{k}.pkl"
+        file_path_acts = f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/acts.pkl"
+        # file_path_probes = (
+        #     f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/{probe_file_name}.pkl"
+        # )
+        # file_path_probes = f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/{probe_file_name}.pkl"
+        probe_dataset_name = args.probe_dataset_name or dataset_name
         file_path_probes = (
-            f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/{probe_file_name}.pkl"
+            f"{task_config.cache_dir}/{probe_dataset_name}/{model_name.split('/')[-1]}/{probe_file_name}.pkl"
         )
+
+        print(f"[INFO] Using probes from dataset: {probe_dataset_name}")
+        print(f"[INFO] Probes file: {file_path_probes}")
 
         # Hyperparameters save files.
         save_dir_steering = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/steering/"
@@ -201,10 +217,20 @@ for model_name in model_names:
         print("[INFO] Loading specific post-processed data for vanilla steering.")
 
         # Load task-specific post-processed data for vanilla steering.
-        y_targets = load_saved_data(
-            save_dir=f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/",
-            data_type="targets",
+
+        # y_targets = load_saved_data(
+        #     save_dir=f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/",
+        #     data_type="targets",
+        # )
+
+        file_path_targets = (
+            f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/targets.pkl"
         )
+        print("[INFO] Loading targets from", file_path_targets)
+
+        with open(file_path_targets, "rb") as f:
+            y_targets = pickle.load(f)
+
         y_correct = [
             (pred == true).astype(int)
             for pred, true in zip(y_targets["y_pred"], y_targets[f"y_true"])
@@ -232,6 +258,30 @@ for model_name in model_names:
         test_labels = dataset_handler.y_true_test
         ref_prompts = dataset_handler.prompts_ref
         ref_labels = dataset_handler.y_true_ref
+
+        print(f"[DEBUG] Total dataset size: {len(dataset_handler.prompts)}")
+        print(f"[DEBUG] len(prompts_test) = {len(test_prompts)}")
+        print(f"[DEBUG] len(y_true_test)  = {len(test_labels)}")
+        print(f"[DEBUG] len(prompts_ref)  = {len(ref_prompts)}")
+        print(f"[DEBUG] len(y_true_ref)   = {len(ref_labels)}")
+
+        # Fallback: if test/ref are empty, create them manually from the full dataset
+        if len(test_prompts) == 0 or len(ref_prompts) == 0:
+            print("[WARN] Empty test/ref split from DatasetHandler – falling back to simple slicing.")
+            total = len(dataset_handler.prompts)
+            num_test = min(nr_test_samples, total)
+            num_ref  = min(nr_ref_samples, max(0, total - num_test))
+
+            test_idxs = list(range(num_test))
+            ref_idxs  = list(range(num_test, num_test + num_ref))
+
+            test_prompts = [dataset_handler.prompts[i] for i in test_idxs]
+            test_labels  = [dataset_handler.y_true[i] for i in test_idxs]
+            ref_prompts  = [dataset_handler.prompts[i] for i in ref_idxs]
+            ref_labels   = [dataset_handler.y_true[i] for i in ref_idxs]
+
+            print(f"[DEBUG] Fallback len(prompts_test) = {len(test_prompts)}")
+            print(f"[DEBUG] Fallback len(prompts_ref)  = {len(ref_prompts)}")
 
         # Retrieve probe coefficients and contrastive pairs.
         df_all_probes = postprocess_df_probes(
@@ -261,7 +311,7 @@ for model_name in model_names:
                         range(nr_layers),
                         get_best_coefficients(
                             df_all_probes,
-                            dataset_name=dataset_name,
+                            dataset_name=probe_dataset_name,
                             task=task,
                             metric=metric,
                             mode=steer_flag,
@@ -272,7 +322,7 @@ for model_name in model_names:
                 probe_layers[(task, steer_flag)] = get_best_layer(
                     df_all_probes,
                     task=task,
-                    dataset_name=dataset_name,
+                    dataset_name=probe_dataset_name,
                     metric=metric,
                     mode=steer_flag,
                 )

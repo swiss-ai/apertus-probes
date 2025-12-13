@@ -29,3 +29,6 @@ start_tunnel.sh
 logs/
 scratch
 *.pickle
+# experiment logs
+wandb/
+scripts/*/wandb/

@@ -1,9 +1,8 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 python3 "$ROOT/src/cache/cache_postprocess.py" \
-    --save_dir "$SCRATCH/mera-runs/" \
-    --save_cache_key "2000" \
+    --save_dir "$SCRATCH/mera-runs" \
     --dataset_name "mmlu_professional" \
-    --model_name "swiss-ai/Apertus-8B-Instruct-2509" \
-    --nr_layers "32" \
+    --model_name "meta-llama/Meta-Llama-3-8B" \
+    --nr_layers 32 \
 
 

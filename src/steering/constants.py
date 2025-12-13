@@ -27,6 +27,8 @@ SUPPORTED_TASKS = [
     "mmlu_high_school",
     "mmlu_professional",
     "sms_spam",
+    "arc_challenge",
+    "arc_easy",
 ]
 
 

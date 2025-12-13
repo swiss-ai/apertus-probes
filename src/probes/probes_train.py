@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 import pickle
 
 from cache.cache_utils import load_saved_data
-from src.utils import *
+from utils import *
 
 
 def train_probes(
@@ -64,12 +64,32 @@ def train_probes(
                 print("layer_idx", layer_idx, "model_task", model_task, "y_true shape", np.array(y_true).shape)
 
                 # Transform to log-odds-ratio space (numerical stability step).
+                # if transform_error and model_task == "regression":
+                #     y_true = np.clip(y_true, 1e-8, 1 - 1e-8)
+                #     y_true = np.log(y_true / (1 - y_true))
+
+                # elif normalise_error and model_task == "regression":
+                #     y_true /= y_true.max()
+
                 if transform_error and model_task == "regression":
-                    y_true = np.clip(y_true, 1e-8, 1 - 1e-8)
-                    y_true = np.log(y_true / (1 - y_true))
+                    y_true = np.asarray(y_true, dtype=np.float64)
+
+                    # If all targets are exactly 0 or 1, logit is not meaningful.
+                    if np.all((y_true == 0.0) | (y_true == 1.0)):
+                        print(
+                            f"[WARN] {dataset_name} – regression targets are 0/1 only; "
+                            "skipping log-odds transform."
+                        )
+                    else:
+                        eps = 1e-6
+                        y_true = np.clip(y_true, eps, 1.0 - eps)
+                        y_true = np.log(y_true / (1.0 - y_true))
 
                 elif normalise_error and model_task == "regression":
-                    y_true /= y_true.max()
+                    y_true = np.asarray(y_true, dtype=np.float64)
+                    max_abs = np.max(np.abs(y_true))
+                    if max_abs > 0:
+                        y_true = y_true / max_abs
 
                 if model_task == "classification":
                     y_true = [y for y in y_true]

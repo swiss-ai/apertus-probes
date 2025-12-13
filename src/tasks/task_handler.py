@@ -1,3 +1,11 @@
+import os
+import sys
+
+# Add the src directory to sys.path
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Tuple, Union
 from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
@@ -7,7 +15,7 @@ from huggingface_hub import login
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel
 from datasets import concatenate_datasets
-from src.utils import *
+from utils import *
 import json
 
 def generate_text_variants(word: str, remove_lower: bool = False) -> list:
@@ -116,7 +124,23 @@ dataset_info = {
         "NR_TRAINING_SAMPLES": 5000,
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
-    }
+    },
+    "yes_no_question": {
+        "CLASSES": ["Yes", "No"],
+        "CLASS_LABEL_TO_INDEX": {"Yes": 0, "No": 1},
+        "CLASS_INDEX_TO_LABEL": {0: "Yes", 1: "No"},
+        "CLASS_LABEL_SEMANTIC": {
+            "Yes": generate_text_variants("Yes"),
+            "No": generate_text_variants("No"),
+        },
+        "DATASET_NAME_HF": "finance-instruct",
+        "MAX_LENGTH": 350,
+        "MAX_NEW_TOKENS": 100,
+        "LABEL_NAME": "answer",
+        "NR_TRAINING_SAMPLES": 3000,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
+    },
 }
 
 
@@ -133,6 +157,10 @@ class TaskConfig:
     batch_size: int = 1
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    nr_samples: Optional[int] = None
+    nr_test_samples: Optional[int] = None
+    nr_ref_samples: Optional[int] = None
 
     def __post_init__(self):
         print(f"[INFO] Initalising {self.dataset_name}")
@@ -328,4 +356,4 @@ class DatasetHandler:
 
 
     def __len__(self):
-        return len(self.ds_samples)
+        return len(self.prompts)

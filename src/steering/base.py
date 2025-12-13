@@ -115,23 +115,46 @@ class Steering:
                 f"Unsupported apply_token_pos_to_steer: {self.apply_token_pos_to_steer}"
             )
 
-    def register_hooks(self):
-        """Register the hooks."""
+    # def register_hooks(self):
+    #     """Register the hooks."""
 
+    #     for layer_idx, layer in enumerate(self.model.model.layers):
+    #         if layer_idx in self.apply_layers_to_steer:
+
+    #             def hook_wrapper(layer_idx):
+    #                 def hook(module, input, output):
+    #                     return self.hook_fn(module, input, output, layer_idx)
+
+    #                 return hook
+
+    #             self.hooks.append(
+    #                 layer.post_attention_layernorm.register_forward_hook(
+    #                     hook_wrapper(layer_idx)
+    #                 )
+    #             )
+
+    def register_hooks(self):
+        """Register the hooks, compatible with Apertus + LLaMA models."""
         for layer_idx, layer in enumerate(self.model.model.layers):
             if layer_idx in self.apply_layers_to_steer:
 
                 def hook_wrapper(layer_idx):
                     def hook(module, input, output):
                         return self.hook_fn(module, input, output, layer_idx)
-
                     return hook
 
-                self.hooks.append(
-                    layer.post_attention_layernorm.register_forward_hook(
-                        hook_wrapper(layer_idx)
+                if hasattr(layer, "attention_layernorm"):
+                    target_module = layer.attention_layernorm
+                elif hasattr(layer, "post_attention_layernorm"):
+                    target_module = layer.post_attention_layernorm
+                else:
+                    raise AttributeError(
+                        f"Decoder layer {layer_idx} has neither attention_layernorm nor post_attention_layernorm"
                     )
+                handle = target_module.register_forward_hook(
+                    hook_wrapper(layer_idx)
                 )
+                self.hooks.append(handle)
 
     def remove_hooks(self):
         for hook in self.hooks:
@@ -197,6 +220,13 @@ class Steering:
         """Run the pipeline with optional context."""
         prompts = self.preprocess_prompts(prompts)
 
+        if len(prompts) == 0:
+            raise ValueError(
+                "Steering.evaluate() received 0 prompts. "
+                "Check how test/ref indices are selected in steering_run.py "
+                "for ARC-Challenge."
+            )
+
         assert not (
             alpha_value is not None and alpha_calibration_token_pos_target is not None
         ), "You must provide only one of 'alpha_value' or 'alpha_calibration_token_pos_target', not both."
@@ -232,7 +262,7 @@ class Steering:
                 flexible_match=True,
                 dataset_info=self.dataset_info,
                 save_dir=f"../runs/",
-                save_key="",
+                # save_key="",
                 save=False,
                 grad=grad,
                 use_cache=True,
@@ -255,7 +285,7 @@ class Steering:
                 position=None,
                 dataset_info=self.dataset_info,
                 save_dir=f"../runs/",
-                save_key="",
+                # save_key="",
                 save=False,
                 grad=grad,
                 use_cache=False,
@@ -269,9 +299,9 @@ class Steering:
                 prompt_sequence_lengths=completions["prompt_sequence_lengths"],
                 match_indices=completions["match_indices"],
                 save_dir=f"../runs/",
-                save_key="",
+                # save_key="",
                 save=False,
-                grad=grad,
+                # grad=grad,
             )
             clean_gpus()
 

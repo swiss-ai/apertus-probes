@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../../../.."
+		},
+		{
+			"path": "../../../../../../capstor/store/cscs/swissai/infra01/apertus_probes"
+		}
+	],
+	"settings": {}
+}

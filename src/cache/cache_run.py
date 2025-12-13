@@ -147,6 +147,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Distributed processing for Gemma model task."
     )
+
+    parser.add_argument(
+        "--hf_token", type=str, default="", help="HuggingFace token (optional)"
+    )
    
     parser.add_argument(
         "--token_position",
@@ -182,6 +186,10 @@ if __name__ == "__main__":
             # "yes_no_question",
         ],
         help="Name(s) of the task(s) to load. Provide a single name or a space-separated list.",
+    )
+
+    parser.add_argument(
+        "--nr_samples", type=int, default=3000, help="Number of samples to process."
     )
 
     parser.add_argument(
@@ -222,6 +230,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print("[DEBUG] Overwrite:", args.overwrite)
     main(
+        args.hf_token,
         args.token_position,
         args.cache_dir,
         args.save_dir,
@@ -234,4 +243,4 @@ if __name__ == "__main__":
         args.run_saes,
         args.flexible_match,
         args.overwrite,
-    )
+)
