@@ -15,7 +15,6 @@ from tasks.task_handler import *
 from cache.cache_utils import *
 from .steering_utils import *
 
-
 class Steering:
     """Apply activation addition for steering toward correct predictions."""
 
@@ -25,6 +24,7 @@ class Steering:
         tokenizer: AutoTokenizer,
         tokenizer_kwargs: dict,
         dataset_info: dict,
+        save_dir: str,
         steering_kwargs: dict,
     ):
 
@@ -32,6 +32,7 @@ class Steering:
         self.tokenizer = tokenizer
         self.tokenizer_kwargs = tokenizer_kwargs
         self.dataset_info = dataset_info
+        self.save_dir = save_dir
         self.steering_kwargs = steering_kwargs
 
         self.eta = self.steering_kwargs.get("eta", 1.0)
@@ -142,19 +143,20 @@ class Steering:
                     def hook(module, input, output):
                         return self.hook_fn(module, input, output, layer_idx)
                     return hook
-
+                
                 if hasattr(layer, "attention_layernorm"):
-                    target_module = layer.attention_layernorm
-                elif hasattr(layer, "post_attention_layernorm"):
-                    target_module = layer.post_attention_layernorm
-                else:
-                    raise AttributeError(
-                        f"Decoder layer {layer_idx} has neither attention_layernorm nor post_attention_layernorm"
-                    )
-                handle = target_module.register_forward_hook(
+                    hook = layer.attention_layernorm.register_forward_hook(
                     hook_wrapper(layer_idx)
                 )
-                self.hooks.append(handle)
+                elif hasattr(layer, "post_attention_layernorm"):
+                    hook = layer.post_attention_layernorm.register_forward_hook(
+                    hook_wrapper(layer_idx)
+                )
+                else:
+                    raise AttributeError("Layer does not have attention_layernorm or post_attention_layernorm.")
+            
+                self.hooks.append(hook)
+             
 
     def remove_hooks(self):
         for hook in self.hooks:
@@ -261,8 +263,7 @@ class Steering:
                 device=self.model.device,
                 flexible_match=True,
                 dataset_info=self.dataset_info,
-                save_dir=f"../runs/",
-                # save_key="",
+                save_dir=self.save_dir,
                 save=False,
                 grad=grad,
                 use_cache=True,
@@ -284,8 +285,7 @@ class Steering:
                 flexible_match=True,
                 position=None,
                 dataset_info=self.dataset_info,
-                save_dir=f"../runs/",
-                # save_key="",
+                save_dir=self.save_dir,
                 save=False,
                 grad=grad,
                 use_cache=False,
@@ -298,10 +298,8 @@ class Steering:
                 dataset_info=self.dataset_info,
                 prompt_sequence_lengths=completions["prompt_sequence_lengths"],
                 match_indices=completions["match_indices"],
-                save_dir=f"../runs/",
-                # save_key="",
+                save_dir=self.save_dir,
                 save=False,
-                # grad=grad,
             )
             clean_gpus()
 

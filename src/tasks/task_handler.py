@@ -41,7 +41,6 @@ dataset_info = {
         "MAX_LENGTH": 350,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "label",
-        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -59,7 +58,6 @@ dataset_info = {
         "MAX_LENGTH": 150,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -76,9 +74,8 @@ dataset_info = {
         "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "NR_TRAINING_SAMPLES": 3000,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
     },
     "mmlu_professional": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -91,9 +88,8 @@ dataset_info = {
         "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "NR_TRAINING_SAMPLES": 2601,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
     },
     "ARC-Easy": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -106,9 +102,8 @@ dataset_info = {
         "DATASET_NAME_HF": "ai2_arc",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "NR_TRAINING_SAMPLES": 5000,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
+        "NR_REF_SAMPLES": 250,
+        "NR_TEST_SAMPLES": 250,
     },
     "ARC-Challenge": {
         "CLASSES": [chr(i) for i in range(65, 69)],
@@ -121,26 +116,24 @@ dataset_info = {
         "DATASET_NAME_HF": "ai2_arc",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
-        "NR_TRAINING_SAMPLES": 5000,
-        "NR_REF_SAMPLES": 210,
-        "NR_TEST_SAMPLES": 210,
-    },
-    "yes_no_question": {
-        "CLASSES": ["Yes", "No"],
-        "CLASS_LABEL_TO_INDEX": {"Yes": 0, "No": 1},
-        "CLASS_INDEX_TO_LABEL": {0: "Yes", 1: "No"},
-        "CLASS_LABEL_SEMANTIC": {
-            "Yes": generate_text_variants("Yes"),
-            "No": generate_text_variants("No"),
-        },
-        "DATASET_NAME_HF": "finance-instruct",
-        "MAX_LENGTH": 350,
-        "MAX_NEW_TOKENS": 100,
-        "LABEL_NAME": "answer",
-        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
+    "sujet_finance_yesno_5k": {
+    "CLASSES": ["yes", "no"],
+    "CLASS_LABEL_TO_INDEX": {"yes": 0, "no": 1},
+    "CLASS_INDEX_TO_LABEL": {0: "yes", 1: "no"},
+    "CLASS_LABEL_SEMANTIC": {
+        "yes": generate_text_variants("yes"),
+        "no": generate_text_variants("no"),
+    },
+    "DATASET_NAME_HF": "sujet_finance_yesno_5k",
+    "MAX_LENGTH": 350,
+    "MAX_NEW_TOKENS": 100,
+    "NR_REF_SAMPLES": 250,
+    "NR_TEST_SAMPLES": 250,
+    }
+
 }
 
 
@@ -150,8 +143,7 @@ class TaskConfig:
 
     cache_dir: str
     dataset_name: str
-    device: Optional[str]
-    nr_devices: int
+    device: str
     model_name: str
     flexible_match: bool
     batch_size: int = 1
@@ -165,26 +157,16 @@ class TaskConfig:
     def __post_init__(self):
         print(f"[INFO] Initalising {self.dataset_name}")
         self.dataset_info = dataset_info[self.dataset_name]
-        if self.nr_samples is None:
-            self.nr_samples = self.dataset_info["NR_TRAINING_SAMPLES"]
-        if self.nr_test_samples is None:
-            self.nr_test_samples = self.dataset_info["NR_TEST_SAMPLES"]
-        if self.nr_ref_samples is None:
-            self.nr_ref_samples = self.dataset_info["NR_REF_SAMPLES"]
+        self.nr_test_samples = self.dataset_info["NR_TEST_SAMPLES"]
+        self.nr_ref_samples = self.dataset_info["NR_REF_SAMPLES"]
 
 
         self.dataset_name = self.dataset_name
         self.dataset_name_hf = self.dataset_info["DATASET_NAME_HF"]
         self.model_kwargs = self.model_kwargs or {
-            # "token": self.token, # this way you don't have to provide it in the command line
             "cache_dir": self.cache_dir,
-            #"device_map": "auto",
             "device_map": {"": self.device} if self.device is not None else "auto",
-            "offload_folder": f"{self.cache_dir}/offload/",
-            # "pad_token_id": tokenizer.eos_token_id,
-            # "torch_dtype": torch.float16,
-            # "device": self.device,s
-            # "nr_devices": self.nr_devices,
+            "offload_folder": f"{self.cache_dir}offload/"
         }
         self.tokenizer_kwargs = self.tokenizer_kwargs or {
             "padding": False,
@@ -198,7 +180,7 @@ class ModelHandler:
         print(f"[INFO] Loading model and tokenizer...")
         self.config = config
         self.tokenizer = self._load_tokenizer()
-        self.model : PreTrainedModel  = self._load_model()
+        self.model : PreTrainedModel = self._load_model()
         self.nr_layers = len(self.model.model.layers)
         self.tokenizer_kwargs = self.config.tokenizer_kwargs
         print(f"[INFO] \n... Done.")
@@ -217,7 +199,6 @@ class ModelHandler:
         model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name, **self.config.model_kwargs
         )
-
         print("[DEBUG] Model kwargs:", self.config.model_kwargs)
         model.eval()
         return model
@@ -283,9 +264,9 @@ class DatasetHandler:
         # Load ALL samples from JSONL
         all_prompts, all_y_true = self._load_dataset()   # lists
 
-        n_train = self.config.nr_samples
         n_test  = self.config.nr_test_samples
         n_ref   = self.config.nr_ref_samples
+        n_train = len(all_prompts) - n_test - n_ref
 
         # Training slice (for activations / probes)
         self.prompts       = all_prompts[:n_train]

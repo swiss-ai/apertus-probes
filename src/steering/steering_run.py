@@ -53,6 +53,7 @@ parser.add_argument(
     required=True,
     help="Save directory for results.",
 )
+
 parser.add_argument(
     "--device",
     type=str,
@@ -115,20 +116,8 @@ parser.add_argument(
 parser.add_argument(
     "--probe_file_name",
     type=str,
-    default="df_probes_trans",
-    help="What probe_file_name to use for coefficients (default: df_probes_trans).",
-)
-parser.add_argument(
-    "--nr_test_samples",
-    type=int,
-    default=250,
-    help="Number of samples for test (default: 250).",
-)
-parser.add_argument(
-    "--nr_ref_samples",
-    type=int,
-    default=250,
-    help="Number of samples for calibration (default: 250).",
+    required=True,
+    help="What probe_file_name to use for coefficients (eg.: df_probes_transform).",
 )
 
 args = parser.parse_args()
@@ -143,8 +132,6 @@ probe_token_pos = args.probe_token_pos
 error_type = args.error_type
 objective_key = args.objective_key
 probe_file_name = args.probe_file_name
-nr_test_samples = args.nr_test_samples
-nr_ref_samples = args.nr_ref_samples
 device = args.device
 
 # Apply validation (if no args, use all)!
@@ -158,9 +145,7 @@ print(f"[DEBUG] Filtered models: {model_names}")
 
 for model_name in model_names:
 
-    process_saes = (
-        False  # if ("meta" in model_name) or ("Qwen" in model_name) else True
-    )
+   
     all_results_list = []
 
     for dataset_name in dataset_names:
@@ -173,24 +158,15 @@ for model_name in model_names:
             cache_dir=cache_dir,
             dataset_name=dataset_name,
             model_name=model_name,
-            device=device if device != "" else None, #torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            nr_devices=5,
+            device=device, #torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             batch_size=1,
-            nr_test_samples=nr_test_samples,
-            nr_ref_samples=nr_ref_samples,
             flexible_match=True,
         )
         model_handler = ModelHandler(task_config)
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
         nr_layers = model_handler.nr_layers
-        k = "_with_saes" if process_saes else ""
-        # file_path_acts = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts{k}.pkl"
-        file_path_acts = f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/acts.pkl"
-        # file_path_probes = (
-        #     f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/{probe_file_name}.pkl"
-        # )
-        # file_path_probes = f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/{probe_file_name}.pkl"
         probe_dataset_name = args.probe_dataset_name or dataset_name
+        file_path_acts = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts.pkl"
         file_path_probes = (
             f"{task_config.cache_dir}/{probe_dataset_name}/{model_name.split('/')[-1]}/{probe_file_name}.pkl"
         )
@@ -372,6 +348,7 @@ for model_name in model_names:
             "tokenizer": model_handler.tokenizer,
             "dataset_info": task_config.dataset_info,
             "tokenizer_kwargs": task_config.tokenizer_kwargs,
+            "save_dir": save_dir_steering,
         }
         layers_settings = {
             "all_layers": list(range(nr_layers)),
@@ -578,7 +555,7 @@ for model_name in model_names:
         first_result = True
 
         ####################################
-        ####### Init logging per task ######
+        ####### Init logging per task #####
         ####################################
 
         wandb.init(
@@ -649,21 +626,13 @@ for model_name in model_names:
                     if hasattr(steering_init, "logging_theta_table_key")
                     else None
                 )
-
-                # Add pad token id if steering Qwen or Llama models.
-                model_generation_kwargs = {}
-                if model_name in [
-                    "Qwen/Qwen2.5-3B",
-                    "Qwen/Qwen2.5-3B-Instruct",
-                    "meta-llama/Llama-3.2-1B",
-                    "meta-llama/Llama-3.2-1B-Instruct",
-                ]:
-                    model_generation_kwargs = {
-                        "pad_token_id": model_handler.tokenizer.eos_token_id
-                    }
-                    if "llama" in model_name:
-                        model_generation_kwargs["temperature"] = 0
-                        model_generation_kwargs["top_p"] = None
+                
+                model_generation_kwargs = {
+                    "pad_token_id": model_handler.tokenizer.eos_token_id,
+                    "temperature": 0,
+                    "top_p": None
+                }
+            
 
                 best_alpha_found = None
                 if requires_dual_alpha:

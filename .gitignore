@@ -27,6 +27,7 @@ Thumbs.db
 
 start_tunnel.sh
 logs
+wandb
 scratch
 *.pickle
 # experiment logs

@@ -636,7 +636,7 @@ def compute_logits(
     grad: bool = False,
     use_cache: bool = False,
     disable_tdqm: bool = False,
-) -> np.ndarray:
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Computes logits for the completions and saves them."""
     prefix = "" if not compute_class_logits else "class_"
     file_path = f"{save_dir}{prefix}logits.pkl"

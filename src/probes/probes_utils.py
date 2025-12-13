@@ -3,24 +3,6 @@ import numpy as np
 from typing import Optional
 
 
-def map_dataset(x: str) -> str:
-    """Maps dataset string to standardized name."""
-    x = x.lower().strip()
-    if "mmlu" in x:
-        if "high_school" in x:
-            return "MMLU-HS"
-        if "professional" in x:
-            return "MMLU-Prof"
-        return "MMLU"
-    if "sms" in x:
-        return "SMS SPAM"
-    if "sentiment" in x:
-        return "Sentiment"
-    if "yes_no" in x:
-        return "Yes_No"
-    return "Unknown"
-
-
 def postprocess_df_probes(
     df,
     filter_error_type: Optional[str] = "sm",
@@ -44,7 +26,6 @@ def postprocess_df_probes(
             df = df[df[col] == val]
 
     # Dtypes and names.
-    df["Dataset_name"] = df["Dataset"].apply(map_dataset)
     df["Layer"] = df["Layer"].astype(int)
 
     # Get into arrays.

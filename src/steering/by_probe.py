@@ -24,11 +24,12 @@ class SteeringByProbe(Steering):
         tokenizer: AutoTokenizer,
         tokenizer_kwargs: dict,
         dataset_info: dict,
+        save_dir: str,
         steering_kwargs: dict,
     ):
 
         super().__init__(
-            model, tokenizer, tokenizer_kwargs, dataset_info, steering_kwargs
+            model, tokenizer, tokenizer_kwargs, dataset_info, save_dir, steering_kwargs
         )
         assert (
             "probe_weights" in self.steering_kwargs

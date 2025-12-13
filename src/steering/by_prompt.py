@@ -17,10 +17,11 @@ class SteeringByPrompt(Steering):
         tokenizer: AutoTokenizer,
         tokenizer_kwargs: dict,
         dataset_info: dict,
+        save_dir: str,
         steering_kwargs: dict,
     ):
         super().__init__(
-            model, tokenizer, tokenizer_kwargs, dataset_info, steering_kwargs
+            model, tokenizer, tokenizer_kwargs, dataset_info, save_dir, steering_kwargs
         )
         self.prompt_addition = self.steering_kwargs.get(
             "prompt_addition", "Think before you answer."

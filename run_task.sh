@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH -A infra01
 #SBATCH -p normal
-#SBATCH -t 06:00:00
+#SBATCH -t 02:00:00
 #SBATCH -J apertus_task
 #SBATCH -o logs/%x-%j.out
 #SBATCH --gpus-per-node=1
@@ -22,7 +22,8 @@
 # Parameters:
 #   --model <alias>             Short model alias (use --list-models to see available aliases)
 #   --model_name <full_name>    Full model name (e.g., "swiss-ai/Apertus-8B-Instruct-2509")
-#   --dataset_name <name>       Dataset name (required)
+#   --dataset_name <name>       Dataset name (required for cache/postprocess/train_probes)
+#   --datasets <name1> [name2]  Dataset names for run_probes (space-separated, can be multiple)
 #
 # Optional parameters:
 #   --nr_samples <int>          Number of samples for cache task (default: 2000)
@@ -32,7 +33,15 @@
 #   --token_pos <str>           Token positions for train_probes (default: "" "_exact")
 #   --process_saes <str>        Process SAEs for train_probes (default: False)
 #   --transform_targets <str>   Transform targets for train_probes (default: True)
-#   --save_name <str>           Save name for train_probes (default: dataset_name)
+#   --save_name <str>           Save name for train_probes/run_probes (default: dataset_name or "")
+#   --error_type <str>          Error type for run_probes: SM or CE (default: SM)
+#   --seed <int>                Random seed for run_probes (default: 52)
+#   --nr_attempts <int>         Number of attempts for run_probes (default: 5)
+#   --max_trials <int>          Max refits for run_probes (default: 5)
+#   --max_workers <int>         Max threads for run_probes (default: 25)
+#   --alphas <float> [float]    L1 alphas for run_probes (default: 0.5 0.25 0.1 0.05)
+#   --no_transform_targets     Disable logit transform for run_probes
+#   --no_normalize_features     Disable feature normalization for run_probes
 
 set -euo pipefail
 
@@ -82,13 +91,15 @@ cd "$ROOT" || {
 }
 
 # Available tasks
-TASKS=("cache" "postprocess" "train_probes")
+TASKS=("cache" "postprocess" "train_probes" "run_probes" "cross_dataset_probes")
 
 # Model aliases - map short names to full model names
 declare -A MODELS
-MODELS["apertus"]="swiss-ai/Apertus-8B-Instruct-2509"
-MODELS["apertus-8b"]="swiss-ai/Apertus-8B-Instruct-2509"
-MODELS["llama"]="meta-llama/Llama-3.1-8B-Instruct"
+MODELS["apertus-instruct"]="swiss-ai/Apertus-8B-Instruct-2509"
+MODELS["apertus-base"]="swiss-ai/Apertus-8B-2509"
+MODELS["llama-instruct"]="meta-llama/Llama-3.1-8B-Instruct"
+MODELS["llama-base"]="meta-llama/Llama-3.1-8B"
+
 # Add more models as needed:
 # MODELS["qwen2.5-3b"]="Qwen/Qwen2.5-3B-Instruct"
 # MODELS["llama3.2-1b"]="meta-llama/Llama-3.2-1B-Instruct"
@@ -101,6 +112,7 @@ DATASETS=(
     "mmlu_professional"
     "ARC-Easy"
     "ARC-Challenge"
+    "sujet_finance_yesno_5k"
 )
 
 # Function to check if dataset is valid
@@ -114,6 +126,88 @@ is_valid_dataset() {
     return 1
 }
 
+# Function to show default values for a task
+show_defaults() {
+    local task="$1"
+    
+    case "$task" in
+        cache)
+            echo "Default values for 'cache' task:"
+            echo ""
+            echo "  --nr_samples: 2000"
+            echo "  --batch_size: 1"
+            echo "  --device: cuda:0"
+            echo ""
+            ;;
+        postprocess)
+            echo "Default values for 'postprocess' task:"
+            echo ""
+            echo "  --nr_layers: 32"
+            echo ""
+            ;;
+        train_probes)
+            echo "Default values for 'train_probes' task:"
+            echo ""
+            echo "  --nr_layers: 32"
+            echo "  --token_pos: \"\" \"_exact\" (both positions)"
+            echo "  --process_saes: False"
+            echo "  --transform_targets: True"
+            echo "  --save_name: <dataset_name>"
+            echo ""
+            ;;
+        run_probes)
+            echo "Default values for 'run_probes' task:"
+            echo ""
+            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-name: \"\" (empty, uses dataset mixture name)"
+            echo "  --error-type: SM"
+            echo "  --token-pos: both"
+            echo "  --seed: 52"
+            echo "  --nr-attempts: 5"
+            echo "  --max-trials: 5"
+            echo "  --max-workers: 25"
+            echo "  --alphas: 0.5 0.25 0.1 0.05"
+            echo "  --transform-targets: enabled (logit transform)"
+            echo "  --normalize-features: enabled (StandardScaler)"
+            echo ""
+            echo "Required parameters:"
+            echo "  --datasets: <name1> [name2] ... (space-separated, at least one required)"
+            echo "  --model-name: <model_name> (required)"
+            echo ""
+            ;;
+        cross_dataset_probes)
+            echo "Default values for 'cross_dataset_probes' task:"
+            echo ""
+            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-name: \"\" (empty, uses '{train_dataset}_to_{test_dataset}')"
+            echo "  --error-type: SM"
+            echo "  --token-pos: exact"
+            echo "  --seed: 52"
+            echo "  --max-trials: 5"
+            echo "  --max-workers: 25"
+            echo "  --alphas: 0.5 0.25 0.1 0.05"
+            echo "  --transform-targets: enabled (logit transform)"
+            echo "  --normalize-features: enabled (StandardScaler)"
+            echo ""
+            echo "Required parameters:"
+            echo "  --train-dataset: <dataset_name> (dataset to train on)"
+            echo "  --test-dataset: <dataset_name> (dataset to test on)"
+            echo "  --model-name: <model_name> (required)"
+            echo ""
+            ;;
+        *)
+            echo "Available tasks: ${TASKS[*]}"
+            echo ""
+            echo "Usage: run_task.sh <task> --show-defaults"
+            echo ""
+            echo "To see defaults for all tasks, run:"
+            for t in "${TASKS[@]}"; do
+                echo "  run_task.sh $t --show-defaults"
+            done
+            ;;
+    esac
+}
+
 # Get task from first argument
 TASK="${1:-}"
 
@@ -122,6 +216,9 @@ if [ -z "$TASK" ]; then
     echo "Usage: run_task.sh <task> --model <alias> --dataset_name <dataset> [options]"
     echo "Available tasks: ${TASKS[*]}"
     echo "Note: This script is designed to run under sbatch. Use submit.sh instead."
+    echo ""
+    echo "To see default values for a task:"
+    echo "  run_task.sh <task> --show-defaults"
     exit 1
 fi
 
@@ -134,10 +231,19 @@ fi
 
 shift  # Remove task from arguments
 
+# Check if user wants to see defaults
+if [ "${1:-}" == "--show-defaults" ] || [ "${1:-}" == "--list-defaults" ]; then
+    show_defaults "$TASK"
+    exit 0
+fi
+
 # Parse arguments
 MODEL_NAME=""
 MODEL_ALIAS=""
 DATASET_NAME=""
+USER_DATASETS=()  # For run_probes (multiple datasets provided by user)
+TRAIN_DATASET=""  # For cross_dataset_probes
+TEST_DATASET=""   # For cross_dataset_probes
 NR_SAMPLES="2000"
 NR_LAYERS="32"
 BATCH_SIZE="1"
@@ -146,6 +252,22 @@ TOKEN_POS_ARGS=()
 PROCESS_SAES="False"
 TRANSFORM_TARGETS="True"
 SAVE_NAME=""
+# run_probes parameters
+ERROR_TYPE="SM"
+SEED="52"
+NR_ATTEMPTS="5"
+MAX_TRIALS="5"
+MAX_WORKERS="25"
+ALPHAS=()
+NO_TRANSFORM_TARGETS=false
+NO_NORMALIZE_FEATURES=false
+USE_LOGIT=false
+TOKEN_POS_RUN_PROBES="both"
+# cache task parameters
+OVERWRITE=""  # Empty means use default (True), "--overwrite" or "--no-overwrite" will be passed
+FLEXIBLE_MATCH=""  # Empty means use default (True)
+RUN_ACTS=""  # Empty means use default (True)
+RUN_SAES=""  # Empty means use default (False)
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -159,6 +281,23 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dataset_name)
             DATASET_NAME="$2"
+            shift 2
+            ;;
+        --datasets)
+            # Handle multiple datasets - consume all following non-flag arguments
+            shift
+            USER_DATASETS=()
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                USER_DATASETS+=("$1")
+                shift
+            done
+            ;;
+        --train-dataset)
+            TRAIN_DATASET="$2"
+            shift 2
+            ;;
+        --test-dataset)
+            TEST_DATASET="$2"
             shift 2
             ;;
         --nr_samples)
@@ -194,9 +333,87 @@ while [[ $# -gt 0 ]]; do
             TRANSFORM_TARGETS="$2"
             shift 2
             ;;
-        --save_name)
+        --save_name|--save-name)
             SAVE_NAME="$2"
             shift 2
+            ;;
+        --error_type|--error-type)
+            ERROR_TYPE="$2"
+            shift 2
+            ;;
+        --seed)
+            SEED="$2"
+            shift 2
+            ;;
+        --nr_attempts|--nr-attempts)
+            NR_ATTEMPTS="$2"
+            shift 2
+            ;;
+        --max_trials|--max-trials)
+            MAX_TRIALS="$2"
+            shift 2
+            ;;
+        --max_workers|--max-workers)
+            MAX_WORKERS="$2"
+            shift 2
+            ;;
+        --alphas)
+            # Handle multiple alphas - consume all following non-flag arguments
+            shift
+            ALPHAS=()
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                ALPHAS+=("$1")
+                shift
+            done
+            ;;
+        --no_transform_targets|--no-transform-targets)
+            NO_TRANSFORM_TARGETS=true
+            shift
+            ;;
+        --no_normalize_features|--no-normalize-features)
+            NO_NORMALIZE_FEATURES=true
+            shift
+            ;;
+        --use_logit|--use-logit)
+            USE_LOGIT=true
+            shift
+            ;;
+        --token_pos|--token-pos)
+            # For run_probes, token_pos is a single value, not multiple
+            TOKEN_POS_RUN_PROBES="$2"
+            shift 2
+            ;;
+        --overwrite)
+            OVERWRITE="--overwrite"
+            shift
+            ;;
+        --no-overwrite)
+            OVERWRITE="--no-overwrite"
+            shift
+            ;;
+        --flexible_match|--flexible-match)
+            FLEXIBLE_MATCH="--flexible-match"
+            shift
+            ;;
+        --no-flexible-match)
+            FLEXIBLE_MATCH="--no-flexible-match"
+            shift
+            ;;
+        --run_acts|--run-acts)
+            RUN_ACTS="--run-acts"
+            shift
+            ;;
+        --no-run-acts)
+            RUN_ACTS="--no-run-acts"
+            shift
+            ;;
+        --run_saes|--run-saes)
+            RUN_SAES="--run-saes"
+            shift
+            ;;
+        --no-run-saes)
+            RUN_SAES="--no-run-saes"
+            shift
             ;;
         *)
             echo "Unknown option: $1"
@@ -218,21 +435,80 @@ if [ -n "$MODEL_ALIAS" ]; then
     MODEL_NAME="${MODELS[$MODEL_ALIAS]}"
 fi
 
-# Validate required parameters
-if [ -z "$MODEL_NAME" ] || [ -z "$DATASET_NAME" ]; then
-    echo "Error: --model <alias> or --model_name <full_name> and --dataset_name are required"
-    exit 1
+# Validate required parameters based on task
+if [ "$TASK" == "run_probes" ]; then
+    # For run_probes, need model and datasets (can be multiple)
+    if [ -z "$MODEL_NAME" ]; then
+        echo "Error: --model <alias> or --model_name <full_name> is required for run_probes"
+        exit 1
+    fi
+    if [ ${#USER_DATASETS[@]} -eq 0 ] && [ -z "$DATASET_NAME" ]; then
+        echo "Error: --datasets <name1> [name2] ... is required for run_probes"
+        exit 1
+    fi
+    # If DATASET_NAME is set but USER_DATASETS is empty, use DATASET_NAME
+    if [ ${#USER_DATASETS[@]} -eq 0 ] && [ -n "$DATASET_NAME" ]; then
+        USER_DATASETS=("$DATASET_NAME")
+    fi
+    # Validate all datasets
+    for dataset in "${USER_DATASETS[@]}"; do
+        if ! is_valid_dataset "$dataset"; then
+            echo "Error: Invalid dataset '$dataset'"
+            exit 1
+        fi
+    done
+elif [ "$TASK" == "cross_dataset_probes" ]; then
+    # For cross_dataset_probes, need model, train_dataset, and test_dataset
+    if [ -z "$MODEL_NAME" ]; then
+        echo "Error: --model <alias> or --model_name <full_name> is required for cross_dataset_probes"
+        exit 1
+    fi
+    if [ -z "$TRAIN_DATASET" ]; then
+        echo "Error: --train-dataset <name> is required for cross_dataset_probes"
+        exit 1
+    fi
+    if [ -z "$TEST_DATASET" ]; then
+        echo "Error: --test-dataset <name> is required for cross_dataset_probes"
+        exit 1
+    fi
+    # Validate datasets
+    if ! is_valid_dataset "$TRAIN_DATASET"; then
+        echo "Error: Invalid train dataset '$TRAIN_DATASET'"
+        exit 1
+    fi
+    if ! is_valid_dataset "$TEST_DATASET"; then
+        echo "Error: Invalid test dataset '$TEST_DATASET'"
+        exit 1
+    fi
+else
+    # For other tasks, need model and single dataset
+    if [ -z "$MODEL_NAME" ] || [ -z "$DATASET_NAME" ]; then
+        echo "Error: --model <alias> or --model_name <full_name> and --dataset_name are required"
+        exit 1
+    fi
+    # Validate dataset
+    if ! is_valid_dataset "$DATASET_NAME"; then
+        echo "Error: Invalid dataset '$DATASET_NAME'"
+        exit 1
+    fi
 fi
 
-# Validate dataset
-if ! is_valid_dataset "$DATASET_NAME"; then
-    echo "Error: Invalid dataset '$DATASET_NAME'"
-    exit 1
+# Set default save_name if not provided
+if [ -z "$SAVE_NAME" ]; then
+    if [ "$TASK" == "train_probes" ]; then
+        SAVE_NAME="$DATASET_NAME"
+    elif [ "$TASK" == "run_probes" ]; then
+        # For run_probes, save_name defaults to empty (will use dataset mixture name)
+        SAVE_NAME=""
+    elif [ "$TASK" == "cross_dataset_probes" ]; then
+        # For cross_dataset_probes, save_name defaults to empty (will use '{train_dataset}_to_{test_dataset}')
+        SAVE_NAME=""
+    fi
 fi
 
-# Set default save_name if not provided (use dataset_name)
-if [ -z "$SAVE_NAME" ] && [ "$TASK" == "train_probes" ]; then
-    SAVE_NAME="$DATASET_NAME"
+# Set default alphas if not provided for run_probes or cross_dataset_probes
+if [ ${#ALPHAS[@]} -eq 0 ] && ([ "$TASK" == "run_probes" ] || [ "$TASK" == "cross_dataset_probes" ]); then
+    ALPHAS=(0.5 0.25 0.1 0.05)
 fi
 
 # Set SCRATCH if not already set
@@ -243,8 +519,18 @@ fi
 # Create custom log file name and update job name (if running under sbatch)
 # Extract short model name from full path (e.g., "Apertus-8B-Instruct-2509" from "swiss-ai/Apertus-8B-Instruct-2509")
 MODEL_SHORT=$(basename "$MODEL_NAME")
-# Clean dataset name for filename (replace spaces/special chars)
-DATASET_CLEAN=$(echo "$DATASET_NAME" | tr ' ' '_' | tr '/' '_')
+# Clean dataset name(s) for filename (replace spaces/special chars)
+if [ "$TASK" == "run_probes" ]; then
+    # For run_probes, join datasets with +
+    DATASET_CLEAN=$(IFS=+; echo "${USER_DATASETS[*]}" | tr ' ' '_' | tr '/' '_')
+elif [ "$TASK" == "cross_dataset_probes" ]; then
+    # For cross_dataset_probes, use train_to_test format
+    TRAIN_CLEAN=$(echo "$TRAIN_DATASET" | tr ' ' '_' | tr '/' '_')
+    TEST_CLEAN=$(echo "$TEST_DATASET" | tr ' ' '_' | tr '/' '_')
+    DATASET_CLEAN="${TRAIN_CLEAN}_to_${TEST_CLEAN}"
+else
+    DATASET_CLEAN=$(echo "$DATASET_NAME" | tr ' ' '_' | tr '/' '_')
+fi
 
 # Create descriptive job name (max 100 chars for SLURM)
 JOB_NAME="${TASK}_${MODEL_SHORT}_${DATASET_CLEAN}"
@@ -273,7 +559,14 @@ fi
 
 echo "Running $TASK task"
 echo "Model: $MODEL_NAME"
-echo "Dataset: $DATASET_NAME"
+if [ "$TASK" == "run_probes" ]; then
+    echo "Datasets: ${USER_DATASETS[*]}"
+elif [ "$TASK" == "cross_dataset_probes" ]; then
+    echo "Train dataset: $TRAIN_DATASET"
+    echo "Test dataset: $TEST_DATASET"
+else
+    echo "Dataset: $DATASET_NAME"
+fi
 echo "----------------------------------------"
 
 # Execute the appropriate task
@@ -282,6 +575,10 @@ case $TASK in
         echo "Cache parameters:"
         echo "  --batch_size: $BATCH_SIZE"
         echo "  --device: $DEVICE"
+        [ -n "$OVERWRITE" ] && echo "  $OVERWRITE"
+        [ -n "$FLEXIBLE_MATCH" ] && echo "  $FLEXIBLE_MATCH"
+        [ -n "$RUN_ACTS" ] && echo "  $RUN_ACTS"
+        [ -n "$RUN_SAES" ] && echo "  $RUN_SAES"
         echo ""
         python3 "$ROOT/src/cache/cache_run.py" \
             --cache_dir "$SCRATCH/mera-runs/processed_datasets/" \
@@ -289,10 +586,11 @@ case $TASK in
             --model_name "$MODEL_NAME" \
             --dataset_names "$DATASET_NAME" \
             --batch_size "$BATCH_SIZE" \
-            --n_devices 1 \
-            --flexible_match \
-            --no-overwrite \
-            --device "$DEVICE"
+            --device "$DEVICE" \
+            $OVERWRITE \
+            $FLEXIBLE_MATCH \
+            $RUN_ACTS \
+            $RUN_SAES
         ;;
     
     postprocess)
@@ -306,28 +604,160 @@ case $TASK in
             --nr_layers "$NR_LAYERS"
         ;;
     
+    # train_probes)
+    #     echo "Train probes parameters:"
+    #     echo "  --nr_layers: $NR_LAYERS"
+    #     # Use TOKEN_POS_ARGS if set, otherwise default to empty and _exact
+    #     if [ ${#TOKEN_POS_ARGS[@]} -eq 0 ]; then
+    #         TOKEN_POS_ARGS=("" "_exact")
+    #     fi
+    #     echo "  --token_pos: ${TOKEN_POS_ARGS[*]}"
+    #     echo "  --process_saes: $PROCESS_SAES"
+    #     echo "  --transform_targets: $TRANSFORM_TARGETS"
+    #     echo "  --save_name: $SAVE_NAME"
+    #     echo ""
+    #     python3 "$ROOT/src/probes/probes_train.py" \
+    #         --save_dir "$SCRATCH/mera-runs/" \
+    #         --dataset_names "$DATASET_NAME" \
+    #         --model_names "$MODEL_NAME" \
+    #         --nr_layers "$NR_LAYERS" \
+    #         --token_pos "${TOKEN_POS_ARGS[@]}" \
+    #         --process_saes "$PROCESS_SAES" \
+    #         --transform_targets "$TRANSFORM_TARGETS" \
+    #         --save_name "$SAVE_NAME"
+    #     ;;
     train_probes)
         echo "Train probes parameters:"
-        echo "  --nr_layers: $NR_LAYERS"
-        # Use TOKEN_POS_ARGS if set, otherwise default to empty and _exact
+        # USE TOKEN_POS_ARGS if set, otherwise default to both
         if [ ${#TOKEN_POS_ARGS[@]} -eq 0 ]; then
             TOKEN_POS_ARGS=("" "_exact")
         fi
         echo "  --token_pos: ${TOKEN_POS_ARGS[*]}"
-        echo "  --process_saes: $PROCESS_SAES"
         echo "  --transform_targets: $TRANSFORM_TARGETS"
         echo "  --save_name: $SAVE_NAME"
         echo ""
-        python3 "$ROOT/src/probes/probes_train.py" \
-            --save_dir "$SCRATCH/mera-runs/" \
-            --dataset_names "$DATASET_NAME" \
-            --model_names "$MODEL_NAME" \
-            --nr_layers "$NR_LAYERS" \
-            --token_pos "${TOKEN_POS_ARGS[@]}" \
-            --process_saes "$PROCESS_SAES" \
-            --transform_targets "$TRANSFORM_TARGETS" \
-            --save_name "$SAVE_NAME"
         ;;
+    
+    run_probes)
+        echo "Run probes parameters:"
+        echo "  --datasets: ${USER_DATASETS[*]}"
+        echo "  --model-name: $MODEL_SHORT"
+        echo "  --save-dir: $SCRATCH/mera-runs"
+        echo "  --save-name: $SAVE_NAME"
+        echo "  --token-pos: $TOKEN_POS_RUN_PROBES"
+        echo "  --seed: $SEED"
+        echo "  --nr-attempts: $NR_ATTEMPTS"
+        echo "  --max-trials: $MAX_TRIALS"
+        echo "  --max-workers: $MAX_WORKERS"
+        echo "  --error-type: $ERROR_TYPE"
+        echo "  --alphas: ${ALPHAS[*]}"
+        if [ "$NO_TRANSFORM_TARGETS" = true ]; then
+            echo "  --no-transform-targets: enabled"
+        fi
+        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
+            echo "  --no-normalize-features: enabled"
+        fi
+        echo ""
+        
+        # Build command
+        RUN_PROBES_CMD=(
+            python3 "$ROOT/src/probes/run_probes.py"
+            --datasets "${USER_DATASETS[@]}"
+            --model-name "$MODEL_SHORT"
+            --save-dir "$SCRATCH/mera-runs"
+            --token-pos "$TOKEN_POS_RUN_PROBES"
+            --seed "$SEED"
+            --nr-attempts "$NR_ATTEMPTS"
+            --max-trials "$MAX_TRIALS"
+            --max-workers "$MAX_WORKERS"
+            --error-type "$ERROR_TYPE"
+        )
+        
+        # Add optional save-name
+        if [ -n "$SAVE_NAME" ]; then
+            RUN_PROBES_CMD+=(--save-name "$SAVE_NAME")
+        fi
+        
+        # Add alphas
+        if [ ${#ALPHAS[@]} -gt 0 ]; then
+            RUN_PROBES_CMD+=(--alphas "${ALPHAS[@]}")
+        fi
+        
+        # Add boolean flags
+        if [ "$NO_TRANSFORM_TARGETS" = true ]; then
+            RUN_PROBES_CMD+=(--no-transform-targets)
+        fi
+        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
+            RUN_PROBES_CMD+=(--no-normalize-features)
+        fi
+        if [ "$USE_LOGIT" = true ]; then
+            RUN_PROBES_CMD+=(--use-logit)
+        fi
+        
+        # Execute
+        "${RUN_PROBES_CMD[@]}"
+        ;;
+    
+    cross_dataset_probes)
+        echo "Cross-dataset probes parameters:"
+        echo "  --train-dataset: $TRAIN_DATASET"
+        echo "  --test-dataset: $TEST_DATASET"
+        echo "  --model-name: $MODEL_SHORT"
+        echo "  --save-dir: $SCRATCH/mera-runs"
+        echo "  --save-name: $SAVE_NAME"
+        echo "  --token-pos: $TOKEN_POS_RUN_PROBES"
+        echo "  --seed: $SEED"
+        echo "  --max-trials: $MAX_TRIALS"
+        echo "  --max-workers: $MAX_WORKERS"
+        echo "  --error-type: $ERROR_TYPE"
+        echo "  --alphas: ${ALPHAS[*]}"
+        if [ "$NO_TRANSFORM_TARGETS" = true ]; then
+            echo "  --no-transform-targets: enabled"
+        fi
+        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
+            echo "  --no-normalize-features: enabled"
+        fi
+        echo ""
+        
+        # Build command
+        CROSS_DATASET_CMD=(
+            python3 "$ROOT/src/probes/run_cross_dataset_probes.py"
+            --train-dataset "$TRAIN_DATASET"
+            --test-dataset "$TEST_DATASET"
+            --model-name "$MODEL_SHORT"
+            --save-dir "$SCRATCH/mera-runs"
+            --token-pos "$TOKEN_POS_RUN_PROBES"
+            --seed "$SEED"
+            --max-trials "$MAX_TRIALS"
+            --max-workers "$MAX_WORKERS"
+            --error-type "$ERROR_TYPE"
+        )
+        
+        # Add optional save-name
+        if [ -n "$SAVE_NAME" ]; then
+            CROSS_DATASET_CMD+=(--save-name "$SAVE_NAME")
+        fi
+        
+        # Add alphas
+        if [ ${#ALPHAS[@]} -gt 0 ]; then
+            CROSS_DATASET_CMD+=(--alphas "${ALPHAS[@]}")
+        fi
+        
+        # Add boolean flags
+        if [ "$NO_TRANSFORM_TARGETS" = true ]; then
+            CROSS_DATASET_CMD+=(--no-transform-targets)
+        fi
+        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
+            CROSS_DATASET_CMD+=(--no-normalize-features)
+        fi
+        if [ "$USE_LOGIT" = true ]; then
+            CROSS_DATASET_CMD+=(--use-logit)
+        fi
+        
+        # Execute
+        "${CROSS_DATASET_CMD[@]}"
+        ;;
+
 esac
 
 echo ""

@@ -15,7 +15,6 @@ from tasks.task_handler import *
 
 
 def main(
-    hf_token: str,
     token_position: int,
     cache_dir: str,
     save_dir: str,
@@ -23,7 +22,6 @@ def main(
     dataset_names: List[str],
     batch_size: int,
     device: str,
-    n_devices: int,
     run_acts: bool,
     run_saes: bool,
     flexible_match: bool,
@@ -38,8 +36,7 @@ def main(
             cache_dir=cache_dir,
             dataset_name=dataset_name,
             model_name=model_name,
-            device=device if device != "" else None,
-            nr_devices=n_devices,
+            device=device,
             flexible_match=flexible_match,
             batch_size=batch_size,
         )
@@ -119,25 +116,6 @@ def main(
                 overwrite=overwrite,
             )
 
-        if run_saes:
-
-            # Ugly solution, but only import SAE lens if necessary.
-            from cache.cache_sae_utils import collect_saes
-
-            # Step 5: Generate SAE activations.
-            sae_activations = collect_saes(
-                model_name=task_config.model_name,
-                tokenizer=model_handler.tokenizer,
-                tokenizer_kwargs=model_handler.tokenizer_kwargs,
-                prompts=completions["completions_str"],
-                cache_dir=cache_dir,
-                batch_size=batch_size,
-                n_devices=6,
-                nr_layers=nr_layers,
-                save_dir=save_dir_curr,
-                overwrite=overwrite,
-                hf_token=hf_token,
-            )
 
     return None
 
@@ -195,7 +173,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size", type=int, default=1, help="The batch_size to process."
     )
-    parser.add_argument("--n_devices", type=int, default=6, help="Number of devices.")
     parser.add_argument(
         "--flexible_match",
         default=True,
@@ -228,6 +205,7 @@ if __name__ == "__main__":
 )
 
     args = parser.parse_args()
+    print(f"Arguments: {args}")
     print("[DEBUG] Overwrite:", args.overwrite)
     main(
         args.hf_token,
@@ -238,7 +216,6 @@ if __name__ == "__main__":
         args.dataset_names,
         args.batch_size,
         args.device,
-        args.n_devices,
         args.run_acts,
         args.run_saes,
         args.flexible_match,
