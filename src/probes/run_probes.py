@@ -90,9 +90,9 @@ def parse_args() -> argparse.Namespace:
         help="Disable logit transform of regression targets.",
     )
     parser.add_argument(
-        "--no-normalize-features",
+        "--normalize-features",
         action="store_true",
-        help="Disable StandardScaler feature normalization.",
+        help="Enable StandardScaler feature normalization (default: disabled).",
     )
     parser.add_argument(
         "--use-logit",
@@ -108,7 +108,6 @@ def main():
 
     # When using LogitRegression or Lasso, don't transform targets (preprocessing)
     # LogitRegression does logit transform internally, Lasso doesn't need it
-    use_logit_regression = args.use_logit
     # Always set transform_targets=False when using regression models (LogitRegression or Lasso)
     transform_targets = False
     
@@ -120,13 +119,12 @@ def main():
         seed=args.seed,
         error_type=args.error_type,
         transform_targets=transform_targets,
-        normalize_features=not args.no_normalize_features,
+        normalize_features=args.normalize_features,  # Default is False, use flag to enable
         nr_attempts=args.nr_attempts,
         max_trials=args.max_trials,
         max_workers=args.max_workers,
         alphas=tuple(args.alphas),
         token_pos=args.token_pos,
-        use_logit_regression=use_logit_regression,
     )
 
     print("\n=== Running probe experiment ===")

@@ -94,6 +94,7 @@ def get_best_layer(
         ]
     if get_values:
         return df_selected["Layer"].iloc[0]
+    print("DEBUG WARNING best_layer: ", df_selected)
     return df_selected
 
 

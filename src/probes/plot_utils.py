@@ -70,9 +70,23 @@ def _get_plot_config():
             "Llama-3.1-8B-Instruct": "Llama-Instruct",
         },
         "probe_lightness": {
+            # Lasso models
             "L-0.05": 0.7,  # darker
             "L-0.1": 0.9,   # slightly darker
             "L-0.25": 1.2,  # slightly lighter
+            "L-0.02": 0.6,  # darker
+            "L-0.5": 1.3,   # lighter
+            # Ridge models
+            "R-0.05": 0.7,  # darker
+            "R-0.1": 0.9,   # slightly darker
+            "R-0.25": 1.2,  # slightly lighter
+            "R-0.02": 0.6,  # darker
+            "R-0.5": 1.3,   # lighter
+            # LogitRegression models
+            "Logit-L-0.05": 0.7,
+            "Logit-L-0.1": 0.9,
+            "Logit-L-0.25": 1.2,
+            "Logit-L-0.02": 0.6,
         },
     }
 
@@ -366,9 +380,15 @@ def _plot_accuracy_lines_on_axis(
                 if group.empty:
                     continue
 
-                # Get accuracy metric (ACC or BACC)
-                metric_col = accuracy_metric
-                dummy_metric_col = f"Dummy-{accuracy_metric}"
+                # Get accuracy metric - map from short names to actual column names
+                metric_map = {
+                    "ACC": "Accuracy",
+                    "BACC": "Accuracy (Balanced)",
+                    "Accuracy": "Accuracy",  # Allow direct use too
+                    "Accuracy (Balanced)": "Accuracy (Balanced)",
+                }
+                metric_col = metric_map.get(accuracy_metric, accuracy_metric)
+                dummy_metric_col = f"Dummy-{metric_col}"
                 
                 # Check if columns exist
                 if metric_col not in group.columns or dummy_metric_col not in group.columns:
@@ -518,7 +538,8 @@ def plot_accuracy_comparison_multi(
     )
 
     # Styling
-    metric_label = "Accuracy" if accuracy_metric == "ACC" else "Balanced Accuracy"
+    metric_map = {"ACC": "Accuracy", "BACC": "Balanced Accuracy", "Accuracy": "Accuracy", "Accuracy (Balanced)": "Balanced Accuracy"}
+    metric_label = metric_map.get(accuracy_metric, accuracy_metric)
     plt.title(title_suffix, fontsize=16, pad=14)
     plt.xlabel("Layer", fontsize=14)
     plt.ylabel(metric_label, fontsize=14)
@@ -581,7 +602,8 @@ def plot_accuracy_on_axis(
         )
 
     # Styling
-    metric_label = "Accuracy" if accuracy_metric == "ACC" else "Balanced Accuracy"
+    metric_map = {"ACC": "Accuracy", "BACC": "Balanced Accuracy", "Accuracy": "Accuracy", "Accuracy (Balanced)": "Balanced Accuracy"}
+    metric_label = metric_map.get(accuracy_metric, accuracy_metric)
     ax.set_title(title_suffix, fontsize=16, pad=14)
     ax.set_xlabel("Layer", fontsize=14)
     ax.set_ylabel(metric_label, fontsize=14)

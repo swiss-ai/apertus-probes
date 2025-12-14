@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from sklearn.linear_model import LogisticRegression, Lasso, LinearRegression
+from sklearn.linear_model import LogisticRegression, Lasso, LinearRegression, Ridge
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.metrics import (
     mean_squared_error,
@@ -78,14 +78,14 @@ class ProbeConfig:
     seed: int = 52
     error_type: str = "SM"             # "SM" or "CE"
     transform_targets: bool = True
-    normalize_features: bool = True
+    normalize_features: bool = False
     nr_attempts: int = 5
     max_trials: int = 5
     eps: float = 1e-10                 # for non-zero coeffs
     max_workers: int = 25
     alphas: tuple = (0.5, 0.25, 0.1, 0.05)
     token_pos: str = "both"           # "exact, last or both"
-    use_logit_regression: bool = False  # If True, use LogitRegression; if False, use standard Lasso (default: Lasso)
+    # Note: Linear regression models (Lasso, Ridge) and logistic regression (LogitRegression) are always run
 
 # -------------------------
 # Metrics & models
@@ -114,29 +114,30 @@ class LogitRegression(Lasso):
         y = super().predict(x)
         return 1 / (np.exp(-y) + 1)
 
-def initialise_regression_models(seed: int, alphas, use_logit_regression: bool = False) -> dict:
+def initialise_regression_models(seed: int, alphas) -> dict:
     """
-    Initialize regression models (Lasso or LogitRegression).
+    Initialize regression models (Lasso, Ridge, and LogitRegression).
     
     Args:
         seed: Random seed
-        alphas: Tuple of alpha values for L1 regularization
-        use_logit_regression: If True, use LogitRegression (applies logit transform);
-                             if False, use standard Lasso
+        alphas: Tuple of alpha values for L1 (Lasso) and L2 (Ridge) regularization
     """
-    if use_logit_regression:
-        models = {
-            f"L-{alpha}": LogitRegression(
-                alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
-            ) for alpha in alphas
-        }
-    else:
-        models = {
-            f"L-{alpha}": Lasso(
-                alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
-            ) for alpha in alphas
-        }
-    # models["L-0"] = LinearRegression(fit_intercept=False, n_jobs=5)
+    models = {}
+    # Add Lasso models (L1 regularization)
+    for alpha in alphas:
+        models[f"L-{alpha}"] = Lasso(
+            alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
+        )
+    # Add Ridge models (L2 regularization)
+    for alpha in alphas:
+        models[f"R-{alpha}"] = Ridge(
+            alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
+        )
+    # Add LogitRegression models (Lasso with logit transform)
+    for alpha in alphas:
+        models[f"Logit-L-{alpha}"] = LogitRegression(
+            alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
+        )
     return models
 
 
@@ -158,8 +159,7 @@ def make_models(config: ProbeConfig) -> dict:
         "classification": initalise_classification_models(config.seed),
         "regression": initialise_regression_models(
             config.seed, 
-            config.alphas, 
-            use_logit_regression=config.use_logit_regression
+            config.alphas
         ),
     }
 
@@ -282,6 +282,20 @@ def train_model_on_layer(
             coef = model.coef_
             coef_norm = np.linalg.norm(coef)
             y_pred = model.predict(X_test)
+            
+            # Get intercept/bias if available
+            if hasattr(model, "intercept_"):
+                intercept = model.intercept_
+                # Convert to native Python type (scalar or list) for serialization
+                if isinstance(intercept, np.ndarray):
+                    if intercept.size == 1:
+                        intercept = float(intercept.item())
+                    else:
+                        intercept = intercept.tolist()
+                else:
+                    intercept = float(intercept)
+            else:
+                intercept = None
 
             non_zero_coeffs = np.where(np.abs(coef) > config.eps)[0]
             no_coeffs = len(non_zero_coeffs) == 0
@@ -305,7 +319,8 @@ def train_model_on_layer(
                 "Task": task_type,
                 "Model": probe_name,
                 "Layer": layer_idx,
-                "Coefficients": coef.flatten(),
+                "Coefficients": coef.flatten().tolist(),  # Export as list like in probes_train
+                "Intercept": intercept if intercept is not None else None,  # Export bias term
                 "Coef-norm": coef_norm,
                 "# of non-zero coefficients": len(non_zero_coeffs),
                 "Attempt": m,

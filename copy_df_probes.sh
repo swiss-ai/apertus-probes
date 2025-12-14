@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Script to copy all .pkl files from all datasets and models to a specific folder
+# Script to copy all .pkl files from mera-runs to /capstor/store/cscs/swissai/infra01/apertus_probes
 #
 # Usage:
-#   ./copy_df_probes.sh <destination_folder> [options]
+#   ./copy_df_probes.sh [destination_folder] [options]
 #
 # Options:
 #   --source <path>        Source directory (default: $SCRATCH/mera-runs/)
 #   --preserve-structure   Preserve directory structure in destination
 #   --dry-run              Show what would be copied without actually copying
 #   --help                 Show this help message
+#
+# Default destination: /capstor/store/cscs/swissai/infra01/apertus_probes
 
 set -euo pipefail
 
@@ -16,6 +18,7 @@ set -euo pipefail
 PRESERVE_STRUCTURE=true
 DRY_RUN=false
 SOURCE_DIR=""
+DEFAULT_DEST_DIR="/capstor/store/cscs/swissai/infra01/apertus_probes"
 
 # Parse arguments
 DEST_DIR=""
@@ -35,12 +38,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help|-h)
             cat << EOF
-Usage: $0 <destination_folder> [options]
+Usage: $0 [destination_folder] [options]
 
-Copy all .pkl files from all datasets and models to a specific folder.
+Copy all .pkl files from mera-runs to a destination folder.
 
 Arguments:
-  <destination_folder>    Destination directory where files will be copied
+  [destination_folder]    Optional destination directory (default: /capstor/store/cscs/swissai/infra01/apertus_probes)
 
 Options:
   --source <path>         Source directory to search (default: \$SCRATCH/mera-runs/)
@@ -50,17 +53,20 @@ Options:
   --help, -h              Show this help message
 
 Examples:
-  # Copy all .pkl files to a folder (flat structure):
+  # Copy all .pkl files to default destination (flat structure):
+  ./copy_df_probes.sh
+
+  # Copy to custom destination:
   ./copy_df_probes.sh /path/to/destination
 
   # Copy with preserved directory structure:
-  ./copy_df_probes.sh /path/to/destination --preserve-structure
+  ./copy_df_probes.sh --preserve-structure
 
   # Use custom source directory:
-  ./copy_df_probes.sh /path/to/destination --source /custom/path/mera-runs
+  ./copy_df_probes.sh --source /custom/path/mera-runs
 
   # Dry run to see what would be copied:
-  ./copy_df_probes.sh /path/to/destination --dry-run
+  ./copy_df_probes.sh --dry-run
 EOF
             exit 0
             ;;
@@ -81,12 +87,10 @@ EOF
     esac
 done
 
-# Validate destination directory
+# Use default destination if not provided
 if [ -z "$DEST_DIR" ]; then
-    echo "Error: Destination directory is required"
-    echo "Usage: $0 <destination_folder> [options]"
-    echo "Use --help for more information"
-    exit 1
+    DEST_DIR="$DEFAULT_DEST_DIR"
+    echo "Using default destination: $DEST_DIR"
 fi
 
 # Remove trailing slash from destination directory to avoid double slashes

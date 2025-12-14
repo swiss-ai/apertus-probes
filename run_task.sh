@@ -168,7 +168,7 @@ show_defaults() {
             echo "  --max-workers: 25"
             echo "  --alphas: 0.5 0.25 0.1 0.05"
             echo "  --transform-targets: enabled (logit transform)"
-            echo "  --normalize-features: enabled (StandardScaler)"
+            echo "  --normalize-features: disabled (use --no-normalize-features to enable)"
             echo ""
             echo "Required parameters:"
             echo "  --datasets: <name1> [name2] ... (space-separated, at least one required)"
@@ -187,7 +187,7 @@ show_defaults() {
             echo "  --max-workers: 25"
             echo "  --alphas: 0.5 0.25 0.1 0.05"
             echo "  --transform-targets: enabled (logit transform)"
-            echo "  --normalize-features: enabled (StandardScaler)"
+            echo "  --normalize-features: disabled (use --no-normalize-features to enable)"
             echo ""
             echo "Required parameters:"
             echo "  --train-dataset: <dataset_name> (dataset to train on)"
@@ -260,7 +260,7 @@ MAX_TRIALS="5"
 MAX_WORKERS="25"
 ALPHAS=()
 NO_TRANSFORM_TARGETS=false
-NO_NORMALIZE_FEATURES=false
+NORMALIZE_FEATURES=false
 USE_LOGIT=false
 TOKEN_POS_RUN_PROBES="both"
 # cache task parameters
@@ -370,8 +370,12 @@ while [[ $# -gt 0 ]]; do
             NO_TRANSFORM_TARGETS=true
             shift
             ;;
+        --normalize_features|--normalize-features)
+            NORMALIZE_FEATURES=true
+            shift
+            ;;
         --no_normalize_features|--no-normalize-features)
-            NO_NORMALIZE_FEATURES=true
+            # Deprecated: kept for backward compatibility, but does nothing (default is now False)
             shift
             ;;
         --use_logit|--use-logit)
@@ -654,8 +658,8 @@ case $TASK in
         if [ "$NO_TRANSFORM_TARGETS" = true ]; then
             echo "  --no-transform-targets: enabled"
         fi
-        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
-            echo "  --no-normalize-features: enabled"
+        if [ "$NORMALIZE_FEATURES" = true ]; then
+            echo "  --normalize-features: enabled"
         fi
         echo ""
         
@@ -687,8 +691,8 @@ case $TASK in
         if [ "$NO_TRANSFORM_TARGETS" = true ]; then
             RUN_PROBES_CMD+=(--no-transform-targets)
         fi
-        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
-            RUN_PROBES_CMD+=(--no-normalize-features)
+        if [ "$NORMALIZE_FEATURES" = true ]; then
+            RUN_PROBES_CMD+=(--normalize-features)
         fi
         if [ "$USE_LOGIT" = true ]; then
             RUN_PROBES_CMD+=(--use-logit)
@@ -714,8 +718,8 @@ case $TASK in
         if [ "$NO_TRANSFORM_TARGETS" = true ]; then
             echo "  --no-transform-targets: enabled"
         fi
-        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
-            echo "  --no-normalize-features: enabled"
+        if [ "$NORMALIZE_FEATURES" = true ]; then
+            echo "  --normalize-features: enabled"
         fi
         echo ""
         
@@ -747,8 +751,8 @@ case $TASK in
         if [ "$NO_TRANSFORM_TARGETS" = true ]; then
             CROSS_DATASET_CMD+=(--no-transform-targets)
         fi
-        if [ "$NO_NORMALIZE_FEATURES" = true ]; then
-            CROSS_DATASET_CMD+=(--no-normalize-features)
+        if [ "$NORMALIZE_FEATURES" = true ]; then
+            CROSS_DATASET_CMD+=(--normalize-features)
         fi
         if [ "$USE_LOGIT" = true ]; then
             CROSS_DATASET_CMD+=(--use-logit)
