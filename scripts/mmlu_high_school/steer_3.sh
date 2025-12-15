@@ -8,8 +8,8 @@ export WANDB_MODE=offline
 
 python3 "$ROOT/src/steering/steering_run.py" \
     --fname "mmlu_hs_3" \
-    --cache_dir "$SCRATCH/mera-runs/" \
-    --save_dir "$SCRATCH/mera-runs/steering_outputs/" \
+    --cache_dir "/capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/" \
+    --save_dir "/capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/steering_outputs/" \
     --model_names "meta-llama/Meta-Llama-3-8B" \
     --dataset_names "mmlu_high_school" \
     --steering_methods "optimal_logistic_probe" "additive_probe" \

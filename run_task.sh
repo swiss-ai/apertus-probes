@@ -134,6 +134,8 @@ show_defaults() {
         cache)
             echo "Default values for 'cache' task:"
             echo ""
+            echo "  --cache_dir: /capstor/store/cscs/swissai/infra01/apertus_probes/processed_datasets"
+            echo "  --save_dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --nr_samples: 2000"
             echo "  --batch_size: 1"
             echo "  --device: cuda:0"
@@ -158,7 +160,7 @@ show_defaults() {
         run_probes)
             echo "Default values for 'run_probes' task:"
             echo ""
-            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --save-name: \"\" (empty, uses dataset mixture name)"
             echo "  --error-type: SM"
             echo "  --token-pos: both"
@@ -178,7 +180,7 @@ show_defaults() {
         cross_dataset_probes)
             echo "Default values for 'cross_dataset_probes' task:"
             echo ""
-            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --save-name: \"\" (empty, uses '{train_dataset}_to_{test_dataset}')"
             echo "  --error-type: SM"
             echo "  --token-pos: exact"
@@ -515,7 +517,9 @@ if [ ${#ALPHAS[@]} -eq 0 ] && ([ "$TASK" == "run_probes" ] || [ "$TASK" == "cros
     ALPHAS=(0.5 0.25 0.1 0.05)
 fi
 
-# Set SCRATCH if not already set
+# Set default save directory
+DEFAULT_SAVE_DIR="/capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
+DEFAULT_CACHE_DIR="/capstor/store/cscs/swissai/infra01/apertus_probes/processed_datasets"
 if [ -z "${SCRATCH:-}" ]; then
     SCRATCH="/iopsstor/scratch/cscs/$USER"
 fi
@@ -577,6 +581,8 @@ echo "----------------------------------------"
 case $TASK in
     cache)
         echo "Cache parameters:"
+        echo "  --cache_dir: $DEFAULT_CACHE_DIR"
+        echo "  --save_dir: $DEFAULT_SAVE_DIR"
         echo "  --batch_size: $BATCH_SIZE"
         echo "  --device: $DEVICE"
         [ -n "$OVERWRITE" ] && echo "  $OVERWRITE"
@@ -585,8 +591,8 @@ case $TASK in
         [ -n "$RUN_SAES" ] && echo "  $RUN_SAES"
         echo ""
         python3 "$ROOT/src/cache/cache_run.py" \
-            --cache_dir "$SCRATCH/mera-runs/processed_datasets/" \
-            --save_dir "$SCRATCH/mera-runs/" \
+            --cache_dir "$DEFAULT_CACHE_DIR/" \
+            --save_dir "$DEFAULT_SAVE_DIR/" \
             --model_name "$MODEL_NAME" \
             --dataset_names "$DATASET_NAME" \
             --batch_size "$BATCH_SIZE" \
@@ -599,10 +605,11 @@ case $TASK in
     
     postprocess)
         echo "Postprocess parameters:"
+        echo "  --save_dir: $DEFAULT_SAVE_DIR"
         echo "  --nr_layers: $NR_LAYERS"
         echo ""
         python3 "$ROOT/src/cache/cache_postprocess.py" \
-            --save_dir "$SCRATCH/mera-runs/" \
+            --save_dir "$DEFAULT_SAVE_DIR/" \
             --dataset_name "$DATASET_NAME" \
             --model_name "$MODEL_NAME" \
             --nr_layers "$NR_LAYERS"
@@ -646,7 +653,7 @@ case $TASK in
         echo "Run probes parameters:"
         echo "  --datasets: ${USER_DATASETS[*]}"
         echo "  --model-name: $MODEL_SHORT"
-        echo "  --save-dir: $SCRATCH/mera-runs"
+        echo "  --save-dir: $DEFAULT_SAVE_DIR"
         echo "  --save-name: $SAVE_NAME"
         echo "  --token-pos: $TOKEN_POS_RUN_PROBES"
         echo "  --seed: $SEED"
@@ -668,7 +675,7 @@ case $TASK in
             python3 "$ROOT/src/probes/run_probes.py"
             --datasets "${USER_DATASETS[@]}"
             --model-name "$MODEL_SHORT"
-            --save-dir "$SCRATCH/mera-runs"
+            --save-dir "$DEFAULT_SAVE_DIR"
             --token-pos "$TOKEN_POS_RUN_PROBES"
             --seed "$SEED"
             --nr-attempts "$NR_ATTEMPTS"
@@ -707,7 +714,7 @@ case $TASK in
         echo "  --train-dataset: $TRAIN_DATASET"
         echo "  --test-dataset: $TEST_DATASET"
         echo "  --model-name: $MODEL_SHORT"
-        echo "  --save-dir: $SCRATCH/mera-runs"
+        echo "  --save-dir: $DEFAULT_SAVE_DIR"
         echo "  --save-name: $SAVE_NAME"
         echo "  --token-pos: $TOKEN_POS_RUN_PROBES"
         echo "  --seed: $SEED"
@@ -729,7 +736,7 @@ case $TASK in
             --train-dataset "$TRAIN_DATASET"
             --test-dataset "$TEST_DATASET"
             --model-name "$MODEL_SHORT"
-            --save-dir "$SCRATCH/mera-runs"
+            --save-dir "$DEFAULT_SAVE_DIR"
             --token-pos "$TOKEN_POS_RUN_PROBES"
             --seed "$SEED"
             --max-trials "$MAX_TRIALS"

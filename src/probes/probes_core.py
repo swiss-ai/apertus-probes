@@ -313,21 +313,33 @@ def train_model_on_layer(
         print("Token-Pos:", token_pos, "Probe-Name:", probe_name, "Layer:", layer_idx, "Results:", metrics)
 
         if not no_coeffs:
+            # Compute residuals (for regression only, to match probes_train convention)
+            if task_type == "regression":
+                residuals = (y_test - y_pred).tolist()
+            else:
+                residuals = []
+
             row = {
+                # Match naming/export style from probes_train.py
                 "Dataset": dataset_name_for_logging,
-                "LLM_Model": config.model_name,
+                "LLM_model": config.model_name,
                 "Task": task_type,
                 "Model": probe_name,
+                "Inputs": "activations",
+                "Error-Type": config.error_type,
                 "Layer": layer_idx,
-                "Coefficients": coef.flatten().tolist(),  # Export as list like in probes_train
-                "Intercept": intercept if intercept is not None else None,  # Export bias term
-                "Coef-norm": coef_norm,
-                "# of non-zero coefficients": len(non_zero_coeffs),
+                "Residuals": residuals,
+                "Coefficients": coef.flatten().tolist(),
+                "Nonzero-Features": non_zero_coeffs.tolist(),
+                "Nonzero-Features-Count": int(len(non_zero_coeffs)),
+                "No-Coefficients": no_coeffs,
                 "Attempt": m,
+                "Model-Index": m + 1,
                 "Token-Pos": token_pos,
                 "y_pred": y_pred,
                 "y_test": y_test,
-                "Error-Type": config.error_type,
+                "Coef-norm": coef_norm,
+                "Intercept": intercept if intercept is not None else None,
                 **metrics,
             }
             results_for_layer.append(row)
@@ -457,14 +469,16 @@ def run_probe_experiment(config: ProbeConfig) -> pd.DataFrame:
     dummy_metric_cols = [f"Dummy-{name}" for name in metric_cols]
     essential_cols = [
         "Dataset",
-        "LLM_Model",
+        "LLM_model",
         "Task",
         "Model",
+        "Inputs",
         "Error-Type",
         "Layer",
-        "# of non-zero coefficients",
+        "Nonzero-Features-Count",
         "Attempt",
         "Token-Pos",
+        "Intercept",
     ]
     essential_results = df_results[essential_cols + metric_cols + dummy_metric_cols]
     essential_results.to_csv(save_prefix + ".csv", index=False)
@@ -640,14 +654,16 @@ def run_cross_dataset_probe_experiment(
     dummy_metric_cols = [f"Dummy-{name}" for name in metric_cols]
     essential_cols = [
         "Dataset",
-        "LLM_Model",
+        "LLM_model",
         "Task",
         "Model",
+        "Inputs",
         "Error-Type",
         "Layer",
-        "# of non-zero coefficients",
+        "Nonzero-Features-Count",
         "Attempt",
         "Token-Pos",
+        "Intercept",
     ]
     essential_results = df_results[essential_cols + metric_cols + dummy_metric_cols]
     essential_results.to_csv(save_prefix + ".csv", index=False)

@@ -54,6 +54,8 @@ show_defaults() {
         cache)
             echo "Default values for 'cache' task:"
             echo ""
+            echo "  --cache_dir: /capstor/store/cscs/swissai/infra01/apertus_probes/processed_datasets"
+            echo "  --save_dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --nr_samples: 2000"
             echo "  --batch_size: 1"
             echo "  --device: cuda:0"
@@ -78,7 +80,7 @@ show_defaults() {
         run_probes)
             echo "Default values for 'run_probes' task:"
             echo ""
-            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --save-name: \"\" (empty, uses dataset mixture name)"
             echo "  --error-type: SM"
             echo "  --token-pos: both"
@@ -98,7 +100,7 @@ show_defaults() {
         cross_dataset_probes)
             echo "Default values for 'cross_dataset_probes' task:"
             echo ""
-            echo "  --save-dir: \$SCRATCH/mera-runs"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs"
             echo "  --save-name: \"\" (empty, uses '{train_dataset}_to_{test_dataset}')"
             echo "  --error-type: SM"
             echo "  --token-pos: exact"
