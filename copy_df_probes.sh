@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Script to copy all .pkl files from scratch (mera-runs and processed_datasets) to /capstor/store/cscs/swissai/infra01/apertus_probes
+# Script to copy all .pkl and .jsonl files from scratch (mera-runs and processed_datasets) to /capstor/store/cscs/swissai/infra01/apertus_probes
 #
 # Usage:
 #   ./copy_df_probes.sh [destination_folder] [options]
 #
 # Options:
 #   --source <path>        Source base directory (default: \$SCRATCH)
-#                         Will copy from both source/mera-runs/ and source/processed_datasets/
+#                         Will copy .pkl and .jsonl files from both source/mera-runs/ and source/processed_datasets/
 #   --preserve-structure   Preserve directory structure in destination
 #   --dry-run              Show what would be copied without actually copying
 #   --help                 Show this help message
@@ -42,14 +42,14 @@ while [[ $# -gt 0 ]]; do
             cat << EOF
 Usage: $0 [destination_folder] [options]
 
-Copy all .pkl files from scratch (mera-runs and processed_datasets) to a destination folder.
+Copy all .pkl and .jsonl files from scratch (mera-runs and processed_datasets) to a destination folder.
 
 Arguments:
   [destination_folder]    Optional destination directory (default: /capstor/store/cscs/swissai/infra01/apertus_probes)
 
 Options:
   --source <path>         Source base directory (default: \$SCRATCH)
-                         Will copy from both source/mera-runs/ and source/processed_datasets/
+                         Will copy .pkl and .jsonl files from both source/mera-runs/ and source/processed_datasets/
                          Default: \$SCRATCH (typically /iopsstor/scratch/cscs/\$USER)
   --preserve-structure    Preserve directory structure in destination
                           (default: all files copied to flat structure)
@@ -146,7 +146,7 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 echo "========================================"
-echo "Copying all .pkl files"
+echo "Copying all .pkl and .jsonl files"
 echo "========================================"
 echo "Source base: $SOURCE_BASE_DIR"
 echo "Destination: $DEST_DIR"
@@ -154,7 +154,7 @@ echo "Preserve structure: $PRESERVE_STRUCTURE"
 echo "Dry run:    $DRY_RUN"
 echo ""
 
-# Find all .pkl files from all source directories, excluding those in activations folders
+# Find all .pkl and .jsonl files from all source directories, excluding those in activations folders
 FILES=()
 for source_info in "${SOURCES_TO_COPY[@]}"; do
     IFS=':' read -r source_dir source_name <<< "$source_info"
@@ -162,11 +162,11 @@ for source_info in "${SOURCES_TO_COPY[@]}"; do
     while IFS= read -r -d '' file; do
         # Store with source name prefix for later path reconstruction
         FILES+=("${source_name}:${file}")
-    done < <(find "$source_dir" -type d -name "activations" -prune -o -type f -name "*.pkl" -print0 2>/dev/null || true)
+    done < <(find "$source_dir" -type d -name "activations" -prune -o \( -type f \( -name "*.pkl" -o -name "*.jsonl" \) -print0 \) 2>/dev/null || true)
 done
 
 if [ ${#FILES[@]} -eq 0 ]; then
-    echo "No .pkl files found in $SOURCE_BASE_DIR"
+    echo "No .pkl or .jsonl files found in $SOURCE_BASE_DIR"
     exit 0
 fi
 
@@ -200,13 +200,20 @@ for file_info in "${FILES[@]}"; do
         # Flatten structure: use filename with dataset and model info
         filename="$(basename "$file")"
         # Try to extract dataset and model from path
-        # Path format: .../dataset_name/model_name/*.pkl
-        if [[ "$rel_path" =~ ^([^/]+)/([^/]+)/.+\.pkl$ ]]; then
+        # Path format: .../dataset_name/model_name/*.pkl or .../dataset_name/*.jsonl
+        if [[ "$rel_path" =~ ^([^/]+)/([^/]+)/.+\.(pkl|jsonl)$ ]]; then
             dataset="${BASH_REMATCH[1]}"
             model="${BASH_REMATCH[2]}"
             # Remove extension, add source name, dataset and model, then add extension back
-            base_name="${filename%.pkl}"
-            dest_file="$DEST_DIR/${source_name}_${dataset}_${model}_${base_name}.pkl"
+            extension="${filename##*.}"
+            base_name="${filename%.*}"
+            dest_file="$DEST_DIR/${source_name}_${dataset}_${model}_${base_name}.${extension}"
+        elif [[ "$rel_path" =~ ^([^/]+)/.+\.(pkl|jsonl)$ ]]; then
+            # Path format: .../dataset_name/*.jsonl (no model subdirectory)
+            dataset="${BASH_REMATCH[1]}"
+            extension="${filename##*.}"
+            base_name="${filename%.*}"
+            dest_file="$DEST_DIR/${source_name}_${dataset}_${base_name}.${extension}"
         else
             # Fallback: use source name and filename
             dest_file="$DEST_DIR/${source_name}_${filename}"

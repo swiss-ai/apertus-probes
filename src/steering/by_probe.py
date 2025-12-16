@@ -51,6 +51,27 @@ class SteeringByProbe(Steering):
             )
             for layer_idx, layer_coeffs in self.steering_kwargs["probe_weights"].items()
         }
+        # Store intercepts if available, defaulting to 0.0 for each layer
+        probe_intercepts = self.steering_kwargs.get("probe_intercepts", {})
+        self.probe_intercepts = {
+            layer_idx: float(intercept) if intercept is not None else 0.0
+            for layer_idx, intercept in probe_intercepts.items()
+        }
+        # Ensure all layers in probe_weights have an intercept (default to 0.0)
+        for layer_idx in self.probe_weights.keys():
+            if layer_idx not in self.probe_intercepts:
+                self.probe_intercepts[layer_idx] = 0.0
+        
+        # Store model names (L-{alpha} or Logit-L-{alpha}) if available
+        probe_models = self.steering_kwargs.get("probe_models", {})
+        self.probe_models = {
+            layer_idx: model_name
+            for layer_idx, model_name in probe_models.items()
+        }
+        # Ensure all layers in probe_weights have a model name (default to "Unknown")
+        for layer_idx in self.probe_weights.keys():
+            if layer_idx not in self.probe_models:
+                self.probe_models[layer_idx] = "Unknown"
         self.mode = self.steering_kwargs.get("mode")
 
         self.lmbda = self.steering_kwargs.get("lmbda", 1.0)
@@ -90,6 +111,11 @@ class SteeringByProbe(Steering):
         if self.debug:
             print("[INFO] Layers to steer:", self.apply_layers_to_steer)
             print("[INFO] Probe weights:", self.probe_weights)
+            print("[INFO] Probe intercepts:", self.probe_intercepts)
+            print("[INFO] Probe models:", self.probe_models)
+            print("[INFO] Mode:", self.mode)
+            
+            print("[INFO] Nonzero coefficients:", [len(np.nonzero(weights)[0]) for weights in self.probe_weights.values()])
 
     def steer(self, activations: torch.Tensor, layer_idx: int) -> torch.Tensor:
         """Main functionality that steerst the model on a token position and layer basis."""

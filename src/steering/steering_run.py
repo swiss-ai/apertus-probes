@@ -45,7 +45,12 @@ parser.add_argument(
     "--cache_dir",
     type=str,
     required=True,
-    help="Cache directory to retrieve the data.",
+    help=(
+        "Base cache directory under 'mera-runs', expected to contain:\n"
+        "  - '<cache_dir>/mix/...': probe results\n"
+        "  - '<cache_dir>/processed_datasets/<dataset>/dataset.jsonl': processed datasets\n"
+        "  - '<cache_dir>/<dataset>/<model>/{{targets,acts}}.pkl': postprocessed cache"
+    ),
 )
 parser.add_argument(
     "--save_dir",
@@ -85,8 +90,12 @@ parser.add_argument(
     "--probe_dataset_name",
     type=str,
     default=None,
-    help="Dataset from which probes were trained (for cross-dataset steering). "
-         "If None, use the same dataset as the steering target.",
+    help=(
+        "Logical dataset/mixture name from which probes were trained. "
+        "If omitted, it defaults to the '+'-joined list of --dataset_names "
+        "(e.g. 'mmlu_high_school+ARC-Easy'). Probes are always loaded from "
+        "<cache_dir>/mix/<probe_dataset_name>/<model_name>/<probe_file_name>.pkl."
+    ),
 )
 parser.add_argument(
     "--top_k_sets",
@@ -119,6 +128,18 @@ parser.add_argument(
     required=True,
     help="What probe_file_name to use for coefficients (eg.: df_probes_transform).",
 )
+parser.add_argument(
+    "--regression-model-type",
+    type=str,
+    choices=["linear", "logit"],
+    default="linear",
+    help=(
+        "Type of regression model to use for steering. "
+        "'linear' uses L-{alpha} models (Lasso), "
+        "'logit' uses Logit-L-{alpha} models (LogitRegression). "
+        "Default: linear"
+    ),
+)
 
 args = parser.parse_args()
 
@@ -127,16 +148,30 @@ fname = args.fname
 # wandb_key = args.wandb_key
 cache_dir = args.cache_dir
 save_dir = args.save_dir
+if not cache_dir.endswith("/"):
+    cache_dir = cache_dir + "/"
+
+# Datasets (dataset.jsonl) live under '<cache_dir>/processed_datasets/<dataset>/dataset.jsonl'
+dataset_cache_root = cache_dir + "processed_datasets/"
 top_k_sets = args.top_k_sets
 probe_token_pos = args.probe_token_pos
 error_type = args.error_type
 objective_key = args.objective_key
 probe_file_name = args.probe_file_name
+regression_model_type = args.regression_model_type
 device = args.device
 
 # Apply validation (if no args, use all)!
 dataset_names = args.dataset_names
 model_names = args.model_names
+
+# Derive the logical probe dataset / mixture name:
+# - If user passed --probe_dataset_name, use it verbatim.
+# - Otherwise, default to a '+'-joined mixture of all dataset_names.
+if args.probe_dataset_name is not None:
+    probe_dataset_name = args.probe_dataset_name
+else:
+    probe_dataset_name = "+".join(dataset_names)
 valid_methods = filter_valid(list(SUPPORTED_METHODS.values()), args.steering_methods)
 print(f"[INFO] Tasks: {dataset_names} | Models: {model_names}")
 print(f"[DEBUG] Valid methods: {valid_methods}")
@@ -145,91 +180,76 @@ print(f"[DEBUG] Filtered models: {model_names}")
 
 for model_name in model_names:
 
-   
+    # Treat all dataset_names as one mixture
+    mixture_name = probe_dataset_name
     all_results_list = []
 
-    for dataset_name in dataset_names:
+    #################################
+    ####### Load model once ########
+    #################################
 
-        #################################
-        ####### Load dataset_names ######
-        #################################
+    primary_dataset = dataset_names[0]
+    base_task_config = TaskConfig(
+        cache_dir=dataset_cache_root,
+        dataset_name=primary_dataset,
+        model_name=model_name,
+        device=device,  # torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        batch_size=1,
+        flexible_match=True,
+    )
+    model_handler = ModelHandler(base_task_config)
+    nr_layers = model_handler.nr_layers
+
+    ############################################
+    ####### Load and mix cached data ###########
+    ############################################
+
+    print("[INFO] Building mixed test/ref sets and activations.")
+    mixed_test_prompts: list[str] = []
+    mixed_test_labels: list[int] = []
+    mixed_ref_prompts: list[str] = []
+    mixed_ref_labels: list[int] = []
+    mixed_y_correct: list[int] = []
+    mixed_y_error: list[float] = []
+    mixed_activations_per_layer: dict[int, list[np.ndarray]] = {}
+
+    model_id = model_name.split("/")[-1]
+
+    for dataset_name in dataset_names:
+        print(f"[INFO] Loading dataset {dataset_name} for mixture {mixture_name}")
 
         task_config = TaskConfig(
-            cache_dir=cache_dir,
+            cache_dir=dataset_cache_root,
             dataset_name=dataset_name,
             model_name=model_name,
-            device=device, #torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            device=device,
             batch_size=1,
             flexible_match=True,
         )
-        model_handler = ModelHandler(task_config)
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
-        nr_layers = model_handler.nr_layers
-        probe_dataset_name = args.probe_dataset_name or dataset_name
-        file_path_acts = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/acts.pkl"
-        file_path_probes = (
-            f"{task_config.cache_dir}/{probe_dataset_name}/{model_name.split('/')[-1]}/{probe_file_name}.pkl"
-        )
 
-        print(f"[INFO] Using probes from dataset: {probe_dataset_name}")
-        print(f"[INFO] Probes file: {file_path_probes}")
-
-        # Hyperparameters save files.
-        save_dir_steering = f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/steering/"
-        os.makedirs(save_dir_steering, exist_ok=True)
-        save_key = f"{fname}_{task_config.nr_test_samples}"
-        file_path_single_run = f"{save_dir_steering}{save_key}_method.pkl"
-        file_path_all_runs = f"{save_dir_steering}{save_key}_steering_all_results.pkl"
-
-        print(f"[INFO] Steering {model_name} | {dataset_name}")
-        print(
-            f"[INFO] nr samples (test, cal) ({task_config.nr_test_samples}, {task_config.nr_ref_samples})"
-        )
-
-        ############################################
-        ####### Load cached errors and lables ######
-        ############################################
-
-        print("[INFO] Loading specific post-processed data for vanilla steering.")
-
-        # Load task-specific post-processed data for vanilla steering.
-
-        # y_targets = load_saved_data(
-        #     save_dir=f"{save_dir}{dataset_name}/{model_name.split('/')[1]}/",
-        #     data_type="targets",
-        # )
-
-        file_path_targets = (
-            f"{task_config.cache_dir}/{dataset_name}/{model_name.split('/')[-1]}/targets.pkl"
-        )
+        # Acts and targets live under '<cache_dir>/<dataset>/<model>/'
+        file_path_acts = f"{cache_dir}{dataset_name}/{model_name.split('/')[1]}/acts.pkl"
+        file_path_targets = f"{cache_dir}{dataset_name}/{model_name.split('/')[-1]}/targets.pkl"
         print("[INFO] Loading targets from", file_path_targets)
-
         with open(file_path_targets, "rb") as f:
             y_targets = pickle.load(f)
 
-        y_correct = [
+        y_correct_ds = [
             (pred == true).astype(int)
-            for pred, true in zip(y_targets["y_pred"], y_targets[f"y_true"])
-        ]  # {probe_token_pos}
-        y_error = (
-            1 - np.array(y_targets[f"y_softmax"])
+            for pred, true in zip(y_targets["y_pred"], y_targets["y_true"])
+        ]
+        y_error_ds = (
+            1 - np.array(y_targets["y_softmax"])
             if error_type == "sm"
-            else y_targets[f"y_error"]
-        )  # {probe_token_pos}
+            else y_targets["y_error"]
+        )
 
         with open(file_path_acts, "rb") as f:
             processed_data = pickle.load(f)
-        activations_cache = processed_data["activations_cache"]  # post-processed
+        activations_cache_ds = processed_data["activations_cache"]  # dict[layer] -> [N,d]
 
-        ############################################################
-        ####### Get contrastive, test, val sets, coefficients ######
-        ############################################################
-
-        print(
-            "[INFO] Loading contrastive, test and validation sets and probe coefficients."
-        )
-
-        # Get test and reference sets.
+        # Get test and reference sets for this dataset
         test_prompts = dataset_handler.prompts_test
         test_labels = dataset_handler.y_true_test
         ref_prompts = dataset_handler.prompts_ref
@@ -245,156 +265,249 @@ for model_name in model_names:
         if len(test_prompts) == 0 or len(ref_prompts) == 0:
             print("[WARN] Empty test/ref split from DatasetHandler – falling back to simple slicing.")
             total = len(dataset_handler.prompts)
-            num_test = min(nr_test_samples, total)
-            num_ref  = min(nr_ref_samples, max(0, total - num_test))
+            num_test = min(task_config.nr_test_samples, total)
+            num_ref = min(task_config.nr_ref_samples, max(0, total - num_test))
 
             test_idxs = list(range(num_test))
-            ref_idxs  = list(range(num_test, num_test + num_ref))
+            ref_idxs = list(range(num_test, num_test + num_ref))
 
             test_prompts = [dataset_handler.prompts[i] for i in test_idxs]
-            test_labels  = [dataset_handler.y_true[i] for i in test_idxs]
-            ref_prompts  = [dataset_handler.prompts[i] for i in ref_idxs]
-            ref_labels   = [dataset_handler.y_true[i] for i in ref_idxs]
+            test_labels = [dataset_handler.y_true[i] for i in test_idxs]
+            ref_prompts = [dataset_handler.prompts[i] for i in ref_idxs]
+            ref_labels = [dataset_handler.y_true[i] for i in ref_idxs]
 
             print(f"[DEBUG] Fallback len(prompts_test) = {len(test_prompts)}")
             print(f"[DEBUG] Fallback len(prompts_ref)  = {len(ref_prompts)}")
 
-        # Retrieve probe coefficients and contrastive pairs.
-        df_all_probes = postprocess_df_probes(
-            pd.read_pickle(file_path_probes),
-            filter_error_type=error_type,
-            filter_probe_token_pos=probe_token_pos,
-            filter_inputs="activations",
+        # Append to mixed containers
+        mixed_test_prompts.extend(test_prompts)
+        mixed_test_labels.extend(test_labels)
+        mixed_ref_prompts.extend(ref_prompts)
+        mixed_ref_labels.extend(ref_labels)
+        mixed_y_correct.extend(y_correct_ds)
+        mixed_y_error.extend(list(y_error_ds))
+
+        # Append activations per layer
+        for layer_idx, layer_data in activations_cache_ds.items():
+            mixed_activations_per_layer.setdefault(layer_idx, []).append(layer_data)
+
+    # Final mixed arrays
+    test_prompts = mixed_test_prompts
+    test_labels = mixed_test_labels
+    ref_prompts = mixed_ref_prompts
+    ref_labels = mixed_ref_labels
+    y_correct = np.array(mixed_y_correct, dtype=int)
+    y_error = np.array(mixed_y_error, dtype=float)
+    activations_cache = {
+        layer_idx: np.concatenate(layer_list, axis=0)
+        for layer_idx, layer_list in mixed_activations_per_layer.items()
+    }
+
+    print(
+        f"[INFO] Mixed test size: {len(test_prompts)}, "
+        f"mixed ref size: {len(ref_prompts)}"
+    )
+
+    ############################################################
+    ####### Load mixed probes and best coefficients ############
+    ############################################################
+
+    file_path_probes = (
+        f"{cache_dir}mix/{mixture_name}/{model_id}/{probe_file_name}.pkl"
+    )
+    print(f"[INFO] Using probes from mixture: {mixture_name}")
+    print(f"[INFO] Probes file: {file_path_probes}")
+
+    df_all_probes = postprocess_df_probes(
+        pd.read_pickle(file_path_probes),
+        filter_error_type=error_type,
+        filter_probe_token_pos=probe_token_pos,
+        filter_inputs="activations",
+    )
+
+    # Filter by regression model type if specified
+    if regression_model_type == "linear":
+        # Filter to only L-{alpha} models (exclude Logit-L-{alpha})
+        # Keep all classification models, and regression models that start with "L-" but not "Logit-L-"
+        mask = (df_all_probes["Task"] != "regression") | (
+            df_all_probes["Model"].str.startswith("L-")
+            & ~df_all_probes["Model"].str.startswith("Logit-L-")
         )
+        df_all_probes = df_all_probes[mask]
+        print(f"[INFO] Filtered to linear regression models (L-{{alpha}})")
+    elif regression_model_type == "logit":
+        # Filter to only Logit-L-{alpha} models
+        # Keep all classification models, and regression models that start with "Logit-L-"
+        mask = (df_all_probes["Task"] != "regression") | df_all_probes[
+            "Model"
+        ].str.startswith("Logit-L-")
+        df_all_probes = df_all_probes[mask]
+        print(f"[INFO] Filtered to logit regression models (Logit-L-{{alpha}})")
 
-        ##########################################
-        ####### Load best and worst weights ######
-        ##########################################
+    # Define task and metric mappings.
+    tasks_metrics = {"regression": "RMSE", "classification": "AUCROC"}
+    steering_options = ["best", "worst", "median"]
 
-        # Define task and metric mappings.
-        tasks_metrics = {"regression": "RMSE", "classification": "AUCROC"}
-        steering_options = ["best", "worst", "median"]
+    print(f"[INFO] Steering {model_name} | mixture {mixture_name}")
+    probe_weights = {}
+    probe_intercepts = {}
+    probe_models = {}  # Store model names (L-{alpha} or Logit-L-{alpha}) for each layer
+    probe_layers = {}
 
-        print(f"[INFO] Steering {model_name} | {dataset_name}")
-        probe_weights = {}
-        probe_layers = {}
-
-        for task, metric in tasks_metrics.items():
-            for steer_flag in steering_options:
-                probe_weights[(task, steer_flag)] = {
-                    int(i): weights
-                    for i, weights in zip(
-                        range(nr_layers),
-                        get_best_coefficients(
-                            df_all_probes,
-                            dataset_name=probe_dataset_name,
-                            task=task,
-                            metric=metric,
-                            mode=steer_flag,
-                        ),
-                    )
-                }
-                
-                probe_layers[(task, steer_flag)] = get_best_layer(
-                    df_all_probes,
-                    task=task,
-                    dataset_name=probe_dataset_name,
-                    metric=metric,
-                    mode=steer_flag,
-                )
-                
-
-        sets = {
-            f"{k}_sets": apply_activation_filtering(
-                activations_cache=activations_cache,
-                y_correct=y_correct,
-                y_error=y_error,
-                filter_type="top_k",
-                k=k,
+    for task, metric in tasks_metrics.items():
+        for steer_flag in steering_options:
+            # The mixed probe DataFrame already contains only a single mixture
+            # (mixture_name), so we don't need to filter by Dataset here.
+            coefficients, intercepts, models = get_best_coefficients(
+                df_all_probes,
+                task=task,
+                metric=metric,
+                mode=steer_flag,
             )
-            for k in top_k_sets
-        }
+            
+            # Validate: must have coefficients/intercepts for all layers
+            if len(coefficients) != nr_layers or len(intercepts) != nr_layers:
+                raise ValueError(
+                    f"Expected {nr_layers} coefficients/intercepts for {(task, steer_flag)}, "
+                    f"but got {len(coefficients)} coefficients and {len(intercepts)} intercepts. "
+                    f"This may indicate missing layers in the probe dataframe."
+                )
+            
+            probe_weights[(task, steer_flag)] = {
+                int(i): weights
+                for i, weights in zip(range(nr_layers), coefficients)
+            }
 
-        nr_best_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v)))
-            for k, v in probe_weights[("regression", "best")].items()
-        ]
-        nr_worst_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v)))
-            for k, v in probe_weights[("regression", "worst")].items()
-        ]
-        nr_median_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v)))
-            for k, v in probe_weights[("regression", "median")].items()
-        ]
-        print(
-            f"[INFO] Number of best coefficients to steer per layer {nr_best_coefficients_to_steer}"
+            probe_intercepts[(task, steer_flag)] = {
+                int(i): intercept
+                for i, intercept in zip(range(nr_layers), intercepts)
+            }
+            
+            # Store model names for each layer (for printing)
+            probe_models[(task, steer_flag)] = {
+                int(i): model_name
+                for i, model_name in zip(range(nr_layers), models)
+            }
+            
+            # Assert: intercepts must match probe_weights keys
+            assert set(probe_intercepts[(task, steer_flag)].keys()) == set(probe_weights[(task, steer_flag)].keys()), (
+                f"Intercept keys do not match probe_weights keys for {(task, steer_flag)}"
+            )
+            
+            # Assert: verify that coefficients and intercepts are paired correctly
+            # (they should come from the same rows in the dataframe)
+            assert len(coefficients) == len(intercepts), (
+                f"Number of coefficients ({len(coefficients)}) does not match "
+                f"number of intercepts ({len(intercepts)}) for {(task, steer_flag)}"
+            )
+
+            probe_layers[(task, steer_flag)] = get_best_layer(
+                df_all_probes,
+                task=task,
+                metric=metric,
+                mode=steer_flag,
+            )
+
+    # Log all best/worst/median layers for steering (useful for debugging/analysis)
+    print("\n" + "="*60)
+    print("[INFO] Best layers for steering:")
+    print("="*60)
+    for task, metric in tasks_metrics.items():
+        print(f"\n[{task.upper()}] (metric: {metric}):")
+        for steer_flag in steering_options:
+            layer = probe_layers.get((task, steer_flag), None)
+            # Get the model name used for this layer (e.g., L-0.5, Logit-L-0.25)
+            model_name = probe_models.get((task, steer_flag), {}).get(layer, "Unknown")
+            print(f"  {steer_flag.capitalize()}: Layer {layer} (model: {model_name})")
+    print("="*60 + "\n")
+
+    ############################################################
+    ####### Build contrastive sets for the mixture ############
+    ############################################################
+
+    sets = {
+        f"{k}_sets": apply_activation_filtering(
+            activations_cache=activations_cache,
+            y_correct=y_correct,
+            y_error=y_error,
+            filter_type="top_k",
+            k=k,
         )
-        print(
-            f"[INFO] Number of worst coefficients to steer per layer {nr_worst_coefficients_to_steer}"
-        )
-        print(
-            f"[INFO] Number of median coefficients to steer per layer {nr_median_coefficients_to_steer}"
-        )
+        for k in top_k_sets
+    }
 
-        ######################################################
-        ####### Prepare steering method hyperparameters ######
-        ######################################################
+    nr_best_coefficients_to_steer = [
+        (int(k), int(np.count_nonzero(v)))
+        for k, v in probe_weights[("regression", "best")].items()
+    ]
+    nr_worst_coefficients_to_steer = [
+        (int(k), int(np.count_nonzero(v)))
+        for k, v in probe_weights[("regression", "worst")].items()
+    ]
+    nr_median_coefficients_to_steer = [
+        (int(k), int(np.count_nonzero(v)))
+        for k, v in probe_weights[("regression", "median")].items()
+    ]
+    print(
+        f"[INFO] Number of best coefficients to steer per layer {nr_best_coefficients_to_steer}"
+    )
+    print(
+        f"[INFO] Number of worst coefficients to steer per layer {nr_worst_coefficients_to_steer}"
+    )
+    print(
+        f"[INFO] Number of median coefficients to steer per layer {nr_median_coefficients_to_steer}"
+    )
 
-        print("[INFO] Preparing steering method hyperparameters.")
+    ######################################################
+    ####### Prepare steering method hyperparameters ######
+    ######################################################
 
-        base_kwargs = {
-            "model": model_handler.model,
-            "tokenizer": model_handler.tokenizer,
-            "dataset_info": task_config.dataset_info,
-            "tokenizer_kwargs": task_config.tokenizer_kwargs,
-            "save_dir": save_dir_steering,
-        }
-        layers_settings = {
-            "all_layers": list(range(nr_layers)),
-            # "best_layer": [probe_best_layer],
-            # "last_layer": [nr_layers],
-        }
-        token_pos_settings = {
-            "all_token_pos": "all",
-            # "generation_token_pos": "generation",  # FIXME.
-            # , "specific", "probe_position"] "probe_token_pos": probe_token_pos.replace("_", "") if "exact" in probe_token_pos else "last",
-        }
-        derive_settings = {
-            # "with_logit_only": {
-            #     "derive_with_sigmoid": False,
-            #     "derive_with_logit": True,
-            # },
-            # "with_sigmoid_only": {
-            #    "derive_with_sigmoid": True,
-            #    "derive_with_logit": False,
-            # },
-            "with_both": {
-                "derive_with_sigmoid": True,
-                "derive_with_logit": True,
-            },
-            # "with_none": {
-            #    "derive_with_sigmoid": False,
-            #    "derive_with_logit": False,
-            # },
-        }
-        eta = 1.0  # etas = [1.0] #, -1.0] for eta in etas:
+    print("[INFO] Preparing steering method hyperparameters.")
 
-        # Add steering methods.
-        benchmark_list = {}
-        benchmark_list["no_steering"] = {"no_steering": True}
-        benchmark_list["prompt_steering"] = {
-            "no_steering": True,
-            "prompt_addition": "Think before you answer.",
-        }
+    # Hyperparameters save files for the mixture
+    save_dir_steering = f"{save_dir}{mixture_name}/{model_name.split('/')[1]}/steering/"
+    os.makedirs(save_dir_steering, exist_ok=True)
+    save_key = f"{fname}_{len(test_prompts)}"
+    file_path_single_run = f"{save_dir_steering}{save_key}_method.pkl"
+    file_path_all_runs = f"{save_dir_steering}{save_key}_steering_all_results.pkl"
 
-        for token_pos_key, token_pos_to_steer in token_pos_settings.items():
+    base_kwargs = {
+        "model": model_handler.model,
+        "tokenizer": model_handler.tokenizer,
+        "dataset_info": base_task_config.dataset_info,
+        "tokenizer_kwargs": base_task_config.tokenizer_kwargs,
+        "save_dir": save_dir_steering,
+    }
+    layers_settings = {
+        "all_layers": list(range(nr_layers)),
+        # "best_layer": [probe_best_layer],
+        # "last_layer": [nr_layers],
+    }
+    token_pos_settings = {
+        "all_token_pos": "all",
+        # "generation_token_pos": "generation",  # FIXME.
+        # , "specific", "probe_position"] "probe_token_pos": probe_token_pos.replace("_", "") if "exact" in probe_token_pos else "last",
+    }
+    # Derive settings are now determined per method based on task type and regression model type:
+    # - For classification: derive_with_logit=True, derive_with_sigmoid=False
+    # - For regression with linear models: derive_with_logit=False, derive_with_sigmoid=False
+    # - For regression with logit models: derive_with_logit=True, derive_with_sigmoid=False
+    # derive_with_sigmoid is always False
+    eta = 1.0  # etas = [1.0] #, -1.0] for eta in etas:
 
-            for layer_key, layers_to_steer in layers_settings.items():
+    # Add steering methods.
+    benchmark_list = {}
+    benchmark_list["no_steering"] = {"no_steering": True}
+    benchmark_list["prompt_steering"] = {
+        "no_steering": True,
+        "prompt_addition": "Think before you answer.",
+    }
 
-                for derive_key, derive_kwargs in derive_settings.items():
+    for token_pos_key, token_pos_to_steer in token_pos_settings.items():
 
-                    for k, sets_k in sets.items():
+        for layer_key, layers_to_steer in layers_settings.items():
+
+            for k, sets_k in sets.items():
 
                         ######################################
                         ######## MERA steering methods #######
@@ -402,53 +515,72 @@ for model_name in model_names:
 
                         mera_methods = [
                             (
-                                f"optimal_probe_{eta}_{layer_key}_{token_pos_key}_derive_all_{derive_key}",
+                                f"optimal_probe_{eta}_{layer_key}_{token_pos_key}",
                                 ("regression", "best"),
                                 "optimal_probe",
                             ),
                             (
-                                f"optimal_logistic_probe_{eta}_{layer_key}_{token_pos_key}_derive_all_{derive_key}",
+                                f"optimal_logistic_probe_{eta}_{layer_key}_{token_pos_key}",
                                 ("classification", "best"),
                                 "optimal_probe",
                             ),
                             (
-                                f"optimal_contrastive_{eta}_{layer_key}_{token_pos_key}_derive_all_{derive_key}",
+                                f"optimal_contrastive_{eta}_{layer_key}_{token_pos_key}",
                                 ("regression", "best"),
                                 "optimal_contrastive",
                             ),
                             (
-                                f"sub_optimal_probe_{eta}_{layer_key}_{token_pos_key}_derive_all_{derive_key}",
+                                f"sub_optimal_probe_{eta}_{layer_key}_{token_pos_key}",
                                 ("regression", "worst"),
                                 "optimal_probe",
                             ),
                             (
-                                f"median_optimal_probe_{eta}_{layer_key}_{token_pos_key}_derive_all_{derive_key}",
+                                f"median_optimal_probe_{eta}_{layer_key}_{token_pos_key}",
                                 ("regression", "median"),
                                 "optimal_probe",
                             ),
                         ]
 
-                        # best_alpha_last, best_alpha_exact, best_metric_last, best_metric_exact, _ = get_best_alpha_from_searches(model_name.split("/")[1], dataset_name, threshold=threshold, method_name=method_name_ours)
-                        kwargs_mera = {
-                            "eta": eta,
-                            "alpha_range": list(np.linspace(1e-3, 0.99, 10)),
-                            # "refine_best_alpha": False,  # FIXME
-                            "ref_prompts": ref_prompts,
-                            "ref_labels": ref_labels,
-                            "derive_with_sigmoid": derive_kwargs["derive_with_sigmoid"],
-                            "derive_with_logit": derive_kwargs["derive_with_logit"],
-                            "derive_with_all": True,
-                            "apply_token_pos_to_steer": token_pos_to_steer,
-                            "apply_layers_to_steer": layers_to_steer,
-                            "objective_key": objective_key,
-                            # "nr_samples": 210 if "mmlu" in dataset_name else 250,
-                            "best_alpha_last": None,  # FIXME
-                            "best_alpha_exact": None,  # FIXME.
-                        }
-
                         for method_name, setting, mode in mera_methods:
+                            # Set derive settings based on task type and regression model type
+                            task_type = setting[0]  # "classification" or "regression"
+                            if task_type == "classification":
+                                # Classification: use logit derivation
+                                derive_with_logit = True
+                                derive_with_sigmoid = False
+                            else:
+                                # Regression: use logit derivation if using logit regression models
+                                if regression_model_type == "logit":
+                                    derive_with_logit = True
+                                else:
+                                    derive_with_logit = False
+                                derive_with_sigmoid = False
+
+                            # best_alpha_last, best_alpha_exact, best_metric_last, best_metric_exact, _ = get_best_alpha_from_searches(model_name.split("/")[1], dataset_name, threshold=threshold, method_name=method_name_ours)
+                            kwargs_mera = {
+                                "eta": eta,
+                                "alpha_range": list(np.linspace(1e-3, 0.99, 10)),
+                                # "refine_best_alpha": False,  # FIXME
+                                "ref_prompts": ref_prompts,
+                                "ref_labels": ref_labels,
+                                "derive_with_sigmoid": derive_with_sigmoid,
+                                "derive_with_logit": derive_with_logit,
+                                "derive_with_all": True,
+                                "apply_token_pos_to_steer": token_pos_to_steer,
+                                "apply_layers_to_steer": layers_to_steer,
+                                "objective_key": objective_key,
+                                # "nr_samples": 210 if "mmlu" in dataset_name else 250,
+                                "best_alpha_last": None,  # FIXME
+                                "best_alpha_exact": None,  # FIXME.
+                            }
 
                             kwargs_mera["probe_weights"] = probe_weights[
+                                (setting[0], setting[1])
+                            ]
+                            kwargs_mera["probe_intercepts"] = probe_intercepts[
+                                (setting[0], setting[1])
+                            ]
+                            kwargs_mera["probe_models"] = probe_models[
                                 (setting[0], setting[1])
                             ]
 
@@ -500,8 +632,21 @@ for model_name in model_names:
                             kwargs_additive["probe_weights"] = probe_weights[
                                 (setting[0], setting[1])
                             ]
+                            kwargs_additive["probe_intercepts"] = probe_intercepts[
+                                (setting[0], setting[1])
+                            ]
+                            kwargs_additive["probe_models"] = probe_models[
+                                (setting[0], setting[1])
+                            ]
                             kwargs_additive["mode"] = mode 
                             benchmark_list[method_name] = kwargs_additive
+                        for key, val in benchmark_list.items():
+                            print(
+                                f"BENCHMARK {key}:",
+                                "\n  probe_weights:", val.get("probe_weights"),
+                                "\n  probe_intercepts:", val.get("probe_intercepts"),
+                                "\n  mode:", val.get("mode")
+                            )
 
                         ###########################################
                         ####### Baseline contrastive methods ######
@@ -560,18 +705,23 @@ for model_name in model_names:
 
         wandb.init(
             project="MERA",
-            name=f"{dataset_name}-{model_name.split('/')[1]}-{fname}",
+            name=f"{mixture_name}-{model_name.split('/')[1]}-{fname}",
+            tags=[fname, model_name.split("/")[1], mixture_name, "multi_gpu"],
+            group=f"multi_gpu_{fname}",
             config={
-                "dataset_name": dataset_name,
+                "dataset_name": mixture_name,
                 "model_name": model_name.split("/")[1],
-                "nr_test_samples": task_config.nr_test_samples,
-                "nr_ref_samples": task_config.nr_ref_samples,
+                "fname": fname,
+                "nr_test_samples": len(test_prompts),
+                "nr_ref_samples": len(ref_prompts),
                 "nr_layers": nr_layers,
                 "file_path_probes": file_path_probes,
-                "file_path_acts": file_path_acts,
+                # Mixed activations aggregated from all datasets in the mixture
                 "top_k_sets": top_k_sets,
                 "probe_token_pos": probe_token_pos,
                 "error_type": error_type,
+                "regression_model_type": regression_model_type,
+                "steering_methods": valid_methods,
                 # "threshold": threshold,
             },
         )
@@ -704,8 +854,8 @@ for model_name in model_names:
                 # Post-processing and logging.
                 single_results = {
                     **{
-                        "steering_key": steering_key_with_target,
-                        "dataset_name": dataset_name,
+                        "steering_key":          steering_key_with_target,
+                        "dataset_name":          mixture_name,
                         "alpha_calibration_token_pos_target": (
                             alpha_calibration_token_pos_target
                             if requires_dual_alpha

@@ -91,7 +91,7 @@ cd "$ROOT" || {
 }
 
 # Available tasks
-TASKS=("cache" "postprocess" "train_probes" "run_probes" "cross_dataset_probes")
+TASKS=("cache" "postprocess" "train_probes" "run_probes" "cross_dataset_probes" "steer_multi")
 
 # Model aliases - map short names to full model names
 declare -A MODELS
@@ -197,6 +197,32 @@ show_defaults() {
             echo "  --model-name: <model_name> (required)"
             echo ""
             ;;
+        steer_multi)
+            echo "Default values for 'steer_multi' task:"
+            echo ""
+            echo "  --cache-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/steering_outputs/"
+            echo "  --regression-model-type: linear (options: linear or logit)"
+            echo "  --top-k: 50 100 200"
+            echo "  --token-pos: exact"
+            echo "  --error-type: sm"
+            echo "  --objective: Accuracy"
+            echo "  --probe-file: df_probes_both"
+            echo ""
+            echo "Required parameters:"
+            echo "  --model: <alias> or --model_name <full_name> (required)"
+            echo "  --dataset_name: <dataset_name> (required)"
+            echo ""
+            echo "This task automatically runs 4 predefined configurations:"
+            echo "  Config 1: no_steering optimal_probe"
+            echo "  Config 2: vanilla_contrastive prompt_steering"
+            echo "  Config 3: optimal_logistic_probe additive_probe"
+            echo "  Config 4: optimal_contrastive"
+            echo ""
+            echo "Fname patterns are auto-generated as: <dataset>_<regression_model_type>_<config_num>"
+            echo "  (e.g., mmlu_high_school_linear_1, mmlu_high_school_linear_2, etc.)"
+            echo ""
+            ;;
         *)
             echo "Available tasks: ${TASKS[*]}"
             echo ""
@@ -270,6 +296,18 @@ OVERWRITE=""  # Empty means use default (True), "--overwrite" or "--no-overwrite
 FLEXIBLE_MATCH=""  # Empty means use default (True)
 RUN_ACTS=""  # Empty means use default (True)
 RUN_SAES=""  # Empty means use default (False)
+# steer_multi parameters
+FNAME_PATTERNS=()  # Array of fname patterns (e.g., mmlu_hs_1 mmlu_hs_2)
+STEERING_METHODS=()  # Array of steering methods per config
+REGRESSION_MODEL_TYPE="linear"  # linear or logit
+TOP_K="50 100 200"
+TOKEN_POS_STEER="exact"
+ERROR_TYPE_STEER="sm"
+OBJECTIVE="Accuracy"
+PROBE_FILE="df_probes_both"
+CACHE_DIR_STEER="/capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/"
+SAVE_DIR_STEER="/capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/steering_outputs/"
+WANDB_KEY="private"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -421,6 +459,60 @@ while [[ $# -gt 0 ]]; do
             RUN_SAES="--no-run-saes"
             shift
             ;;
+        --fname-patterns)
+            # Handle multiple fname patterns
+            shift
+            FNAME_PATTERNS=()
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                FNAME_PATTERNS+=("$1")
+                shift
+            done
+            ;;
+        --steering-methods)
+            # Handle multiple steering methods
+            shift
+            STEERING_METHODS=()
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                STEERING_METHODS+=("$1")
+                shift
+            done
+            ;;
+        --regression-model-type)
+            REGRESSION_MODEL_TYPE="$2"
+            shift 2
+            ;;
+        --top-k)
+            TOP_K="$2"
+            shift 2
+            ;;
+        --token-pos-steer)
+            TOKEN_POS_STEER="$2"
+            shift 2
+            ;;
+        --error-type-steer)
+            ERROR_TYPE_STEER="$2"
+            shift 2
+            ;;
+        --objective)
+            OBJECTIVE="$2"
+            shift 2
+            ;;
+        --probe-file)
+            PROBE_FILE="$2"
+            shift 2
+            ;;
+        --cache-dir-steer)
+            CACHE_DIR_STEER="$2"
+            shift 2
+            ;;
+        --save-dir-steer)
+            SAVE_DIR_STEER="$2"
+            shift 2
+            ;;
+        --wandb-key)
+            WANDB_KEY="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -442,7 +534,22 @@ if [ -n "$MODEL_ALIAS" ]; then
 fi
 
 # Validate required parameters based on task
-if [ "$TASK" == "run_probes" ]; then
+if [ "$TASK" == "steer_multi" ]; then
+    # For steer_multi, need model and dataset (configs are predefined)
+    if [ -z "$MODEL_NAME" ]; then
+        echo "Error: --model <alias> or --model_name <full_name> is required for steer_multi"
+        exit 1
+    fi
+    if [ -z "$DATASET_NAME" ]; then
+        echo "Error: --dataset_name is required for steer_multi"
+        exit 1
+    fi
+    # Validate dataset
+    if ! is_valid_dataset "$DATASET_NAME"; then
+        echo "Error: Invalid dataset '$DATASET_NAME'"
+        exit 1
+    fi
+elif [ "$TASK" == "run_probes" ]; then
     # For run_probes, need model and datasets (can be multiple)
     if [ -z "$MODEL_NAME" ]; then
         echo "Error: --model <alias> or --model_name <full_name> is required for run_probes"
@@ -767,6 +874,157 @@ case $TASK in
         
         # Execute
         "${CROSS_DATASET_CMD[@]}"
+        ;;
+    
+    steer_multi)
+        echo "Steer multi parameters:"
+        echo "  Model: $MODEL_NAME"
+        echo "  Dataset: $DATASET_NAME"
+        echo "  Regression model type: $REGRESSION_MODEL_TYPE"
+        echo "  Top-k: $TOP_K"
+        echo "  Token pos: $TOKEN_POS_STEER"
+        echo "  Error type: $ERROR_TYPE_STEER"
+        echo "  Objective: $OBJECTIVE"
+        echo "  Probe file: $PROBE_FILE"
+        echo "  Cache dir: $CACHE_DIR_STEER"
+        echo "  Save dir: $SAVE_DIR_STEER"
+        echo ""
+        
+        # Create logs directory
+        LOGS_DIR="$ROOT/logs"
+        mkdir -p "$LOGS_DIR"
+        
+        # Set wandb to online mode
+        export WANDB_MODE=online
+        
+        # Create unique job tag for log files (use SLURM_JOB_ID if available, otherwise timestamp)
+        if [ -n "${SLURM_JOB_ID:-}" ]; then
+            JOB_TAG="${SLURM_JOB_ID}"
+        else
+            JOB_TAG="$(date +%Y%m%d_%H%M%S)_$$"
+        fi
+        
+        # GPU assignments (cycle through if more configs than GPUs)
+        # Determine number of GPUs available from SLURM or detect locally
+        if [ -n "${SLURM_GPUS_ON_NODE:-}" ]; then
+            # Running under SLURM - use the allocated GPUs
+            NUM_GPUS=$SLURM_GPUS_ON_NODE
+            echo "[INFO] Running under SLURM with $NUM_GPUS GPU(s), job ID: $JOB_TAG"
+        else
+            # Running locally - try to detect available GPUs
+            if command -v nvidia-smi &> /dev/null; then
+                NUM_GPUS=$(nvidia-smi --list-gpus | wc -l)
+                echo "[INFO] Detected $NUM_GPUS GPU(s) locally, job tag: $JOB_TAG"
+            else
+                NUM_GPUS=4  # Default fallback
+                echo "[WARN] Could not detect GPUs, defaulting to $NUM_GPUS, job tag: $JOB_TAG"
+            fi
+        fi
+        GPUS=($(seq 0 $((NUM_GPUS - 1))))
+        
+        # Define configurations (same as steer_multi_gpu_all.sh)
+        # Generate fname based on dataset name and regression model type
+        DATASET_SHORT=$(echo "$DATASET_NAME" | tr ' ' '_' | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+        
+        # Configuration 1: no_steering optimal_probe
+        CONFIG_1_FNAME="${DATASET_SHORT}_${REGRESSION_MODEL_TYPE}_1"
+        CONFIG_1_METHODS=("no_steering" "optimal_probe")
+        
+        # Configuration 2: vanilla_contrastive prompt_steering
+        CONFIG_2_FNAME="${DATASET_SHORT}_${REGRESSION_MODEL_TYPE}_2"
+        CONFIG_2_METHODS=("vanilla_contrastive" "prompt_steering")
+        
+        # Configuration 3: optimal_logistic_probe additive_probe
+        CONFIG_3_FNAME="${DATASET_SHORT}_${REGRESSION_MODEL_TYPE}_3"
+        CONFIG_3_METHODS=("optimal_logistic_probe" "additive_probe")
+        
+        # Configuration 4: optimal_contrastive
+        CONFIG_4_FNAME="${DATASET_SHORT}_${REGRESSION_MODEL_TYPE}_4"
+        CONFIG_4_METHODS=("optimal_contrastive")
+        
+        CONFIGS=(
+            "$CONFIG_1_FNAME:${CONFIG_1_METHODS[*]}"
+            "$CONFIG_2_FNAME:${CONFIG_2_METHODS[*]}"
+            "$CONFIG_3_FNAME:${CONFIG_3_METHODS[*]}"
+            "$CONFIG_4_FNAME:${CONFIG_4_METHODS[*]}"
+        )
+        
+        echo "[INFO] Will run ${#CONFIGS[@]} config(s) across GPU(s): ${GPUS[*]}"
+        
+        # Function to run steering from config
+        run_steering_from_config() {
+            local fname="$1"
+            local gpu_id="$2"
+            shift 2
+            local methods=("$@")
+            
+            echo "========================================"
+            echo "Running $fname on GPU $gpu_id"
+            echo "  Model: $MODEL_NAME"
+            echo "  Methods: ${methods[*]}"
+            echo "  Probe file: $PROBE_FILE"
+            echo "  Regression model type: $REGRESSION_MODEL_TYPE"
+            echo "========================================"
+            
+            python3 "$ROOT/src/steering/steering_run.py" \
+                --fname "$fname" \
+                --cache_dir "$CACHE_DIR_STEER" \
+                --save_dir "$SAVE_DIR_STEER" \
+                --model_names "$MODEL_NAME" \
+                --dataset_names "$DATASET_NAME" \
+                --steering_methods "${methods[@]}" \
+                --top_k_sets $TOP_K \
+                --probe_token_pos "$TOKEN_POS_STEER" \
+                --error_type "$ERROR_TYPE_STEER" \
+                --objective_key "$OBJECTIVE" \
+                --probe_file_name "$PROBE_FILE" \
+                --regression-model-type "$REGRESSION_MODEL_TYPE" \
+                --device "cuda:$gpu_id" \
+                --wandb_key "$WANDB_KEY" \
+                > "${LOGS_DIR}/steering_${fname}_gpu${gpu_id}_${JOB_TAG}.log" 2>&1 &
+            
+            local pid=$!
+            echo "Started $fname on GPU $gpu_id (PID: $pid)"
+        }
+        
+        # Launch all configurations
+        echo "========================================"
+        echo "Launching ${#CONFIGS[@]} steering configurations"
+        echo "========================================"
+        
+        PIDS=()
+        for i in "${!CONFIGS[@]}"; do
+            config_line="${CONFIGS[$i]}"
+            fname="${config_line%%:*}"
+            methods_str="${config_line#*:}"
+            # Convert methods string back to array
+            read -ra methods <<< "$methods_str"
+            
+            gpu_idx=$((i % ${#GPUS[@]}))
+            gpu_id="${GPUS[$gpu_idx]}"
+            
+            run_steering_from_config "$fname" "$gpu_id" "${methods[@]}"
+            
+            PIDS+=($!)
+            sleep 2  # Small delay between launches
+        done
+        
+        echo ""
+        echo "All steering jobs launched!"
+        echo "GPU assignments:"
+        for i in "${!CONFIGS[@]}"; do
+            config_line="${CONFIGS[$i]}"
+            fname="${config_line%%:*}"
+            gpu_idx=$((i % ${#GPUS[@]}))
+            gpu_id="${GPUS[$gpu_idx]}"
+            echo "  GPU $gpu_id: $fname"
+        done
+        echo ""
+        echo "Waiting for completion..."
+        wait
+        
+        echo ""
+        echo "All steering jobs completed!"
         ;;
 
 esac

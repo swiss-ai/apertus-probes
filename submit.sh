@@ -12,7 +12,7 @@ MODELS["llama-instruct"]="meta-llama/Llama-3.1-8B-Instruct"
 MODELS["llama-base"]="meta-llama/Llama-3.1-8B"
 
 # Available tasks
-TASKS=("cache" "postprocess" "train_probes" "run_probes" "cross_dataset_probes")
+TASKS=("cache" "postprocess" "train_probes" "run_probes" "cross_dataset_probes" "steer_multi")
 
 # Available datasets (same as in run_task.sh)
 DATASETS=(
@@ -115,6 +115,30 @@ show_defaults() {
             echo "  --train-dataset: <dataset_name> (dataset to train on)"
             echo "  --test-dataset: <dataset_name> (dataset to test on)"
             echo "  --model-name: <model_name> (required)"
+            echo ""
+            ;;
+        steer_multi)
+            echo "Default values for 'steer_multi' task:"
+            echo ""
+            echo "  --cache-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/"
+            echo "  --save-dir: /capstor/store/cscs/swissai/infra01/apertus_probes/mera-runs/steering_outputs/"
+            echo "  --regression-model-type: linear (options: linear or logit)"
+            echo "  --top-k: 50 100 200"
+            echo "  --token-pos: exact"
+            echo "  --error-type: sm"
+            echo "  --objective: Accuracy"
+            echo "  --probe-file: df_probes_both"
+            echo "  --gpus: 4 (runs on GPUs 0-3)"
+            echo ""
+            echo "Required parameters:"
+            echo "  --model: <alias> or --model_name <full_name> (required)"
+            echo "  --dataset_name: <dataset_name> (required)"
+            echo ""
+            echo "This task automatically runs 4 predefined configurations:"
+            echo "  Config 1: no_steering optimal_probe"
+            echo "  Config 2: vanilla_contrastive prompt_steering"
+            echo "  Config 3: optimal_logistic_probe additive_probe"
+            echo "  Config 4: optimal_contrastive"
             echo ""
             ;;
         *)
@@ -236,7 +260,7 @@ while [[ $# -gt 0 ]]; do
             SHOW_DEFAULTS=true
             shift
             ;;
-        cache|postprocess|train_probes|run_probes|cross_dataset_probes)
+        cache|postprocess|train_probes|run_probes|cross_dataset_probes|steer_multi)
             TASK="$1"
             SCRIPT_ARGS+=("$1")
             shift
@@ -439,9 +463,28 @@ if [ -z "$MODEL_NAME" ]; then
     exit 1
 fi
 
+# Validate steer_multi specific requirements (after model resolution)
+if [ "$TASK" == "steer_multi" ]; then
+    if [ -z "$DATASET_NAME" ]; then
+        echo "Error: --dataset_name is required for steer_multi"
+        exit 1
+    fi
+    # Validate dataset
+    if ! is_valid_dataset "$DATASET_NAME"; then
+        echo "Error: Invalid dataset '$DATASET_NAME'"
+        echo "Available datasets:"
+        list_datasets
+        exit 1
+    fi
+fi
+
 # Create descriptive job name
 MODEL_SHORT=$(basename "$MODEL_NAME")
-if [ "$TASK" == "run_probes" ]; then
+if [ "$TASK" == "steer_multi" ]; then
+    # For steer_multi, use dataset name
+    DATASET_CLEAN=$(echo "$DATASET_NAME" | tr ' ' '_' | tr '/' '_')
+    JOB_NAME="${TASK}_${MODEL_SHORT}_${DATASET_CLEAN}"
+elif [ "$TASK" == "run_probes" ]; then
     # For run_probes, join datasets with +
     DATASET_CLEAN=$(IFS=+; echo "${USER_DATASETS[*]}" | tr ' ' '_' | tr '/' '_')
 elif [ "$TASK" == "cross_dataset_probes" ]; then
@@ -468,7 +511,26 @@ for arg in "${SBATCH_ARGS[@]}"; do
     fi
 done
 if [ "$TIME_SPECIFIED" = false ] && [ "$RUN_LOCAL" = false ]; then
-    SBATCH_ARGS+=("--time=06:00:00")
+    if [ "$TASK" == "steer_multi" ]; then
+        # Steering tasks may need more time
+        SBATCH_ARGS+=("--time=12:00:00")
+    else
+        SBATCH_ARGS+=("--time=06:00:00")
+    fi
+fi
+
+# Set default GPUs for steer_multi
+if [ "$TASK" == "steer_multi" ]; then
+    GPUS_SPECIFIED=false
+    for arg in "${SBATCH_ARGS[@]}"; do
+        if [[ "$arg" == --gpus-per-node=* ]]; then
+            GPUS_SPECIFIED=true
+            break
+        fi
+    done
+    if [ "$GPUS_SPECIFIED" = false ] && [ "$RUN_LOCAL" = false ]; then
+        SBATCH_ARGS+=("--gpus-per-node=4")
+    fi
 fi
 
 # Execute locally or with sbatch
@@ -478,7 +540,9 @@ if [ "$RUN_LOCAL" = true ]; then
     echo "Running locally..."
     echo "  Task:    $TASK"
     echo "  Model:   $MODEL_NAME"
-    if [ "$TASK" == "run_probes" ]; then
+    if [ "$TASK" == "steer_multi" ]; then
+        echo "  Dataset: $DATASET_NAME"
+    elif [ "$TASK" == "run_probes" ]; then
         echo "  Datasets: ${USER_DATASETS[*]}"
     elif [ "$TASK" == "cross_dataset_probes" ]; then
         echo "  Train dataset: $TRAIN_DATASET"
@@ -497,7 +561,9 @@ else
     echo "Submitting job to SLURM..."
     echo "  Task:    $TASK"
     echo "  Model:   $MODEL_NAME"
-    if [ "$TASK" == "run_probes" ]; then
+    if [ "$TASK" == "steer_multi" ]; then
+        echo "  Dataset: $DATASET_NAME"
+    elif [ "$TASK" == "run_probes" ]; then
         echo "  Datasets: ${USER_DATASETS[*]}"
     elif [ "$TASK" == "cross_dataset_probes" ]; then
         echo "  Train dataset: $TRAIN_DATASET"

@@ -80,16 +80,18 @@ class MERA(SteeringByProbe):
             )
 
         if self.mode == "optimal_probe":
+            intercept = self.probe_intercepts.get(layer_idx, 0.0)
             optimal_theta, theta, condition = self.optimise_steering_closed_form(
-                activations, self.probe_weights[layer_idx]
+                activations, self.probe_weights[layer_idx], intercept
             )
             return activations.to(self.model.device) + optimal_theta.to(
                 self.model.device
             )
 
         elif self.mode == "optimal_contrastive":
+            # For contrastive, we don't have intercepts, so use 0.0
             optimal_theta, theta, condition = self.optimise_steering_closed_form(
-                activations, self.contrastive_vector[layer_idx]
+                activations, self.contrastive_vector[layer_idx], 0.0
             )
             return activations.to(self.model.device) + optimal_theta.to(
                 self.model.device
@@ -123,16 +125,20 @@ class MERA(SteeringByProbe):
         self,
         activations: torch.Tensor,
         vector: torch.Tensor,
+        intercept: float
     ) -> torch.Tensor:
 
         assert (
             self.alpha_value is not None
         ), "'alpha_value' cannot be None in 'optimise_steering_closed_form' func."
+        assert intercept is not None and isinstance(intercept, (int, float)), (
+            f"intercept must be a numeric value, got {type(intercept)}"
+        )
 
         # Compute the dot product per token position (batch_size, token_positions).
         wTx = torch.matmul(
-            activations.to(self.model.device), vector.to(self.model.device)
-        )
+            activations.to(self.model.device), vector.to(self.model.device) 
+        ) + intercept
         wTx_transformed = wTx
         if self.derive_with_sigmoid:
             wTx_transformed = torch.special.expit(wTx)
