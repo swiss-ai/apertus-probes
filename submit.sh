@@ -129,10 +129,15 @@ show_defaults() {
             echo "  --objective: Accuracy"
             echo "  --probe-file: df_probes_both"
             echo "  --gpus: 4 (runs on GPUs 0-3)"
+            echo "  --probe-dataset-name: (optional, defaults to dataset_name if not provided)"
             echo ""
             echo "Required parameters:"
             echo "  --model: <alias> or --model_name <full_name> (required)"
-            echo "  --dataset_name: <dataset_name> (required)"
+            echo "  --dataset_name: <dataset_name> (required, the dataset to steer on)"
+            echo ""
+            echo "Optional parameters:"
+            echo "  --probe-dataset-name: <mixture_name> (probe source, e.g., 'mmlu_high_school+mmlu_professional')"
+            echo "    If not provided, defaults to dataset_name (probe trained on same dataset as steering target)"
             echo ""
             echo "This task automatically runs 4 predefined configurations:"
             echo "  Config 1: no_steering optimal_probe"
@@ -174,6 +179,7 @@ DATASET_NAME=""
 USER_DATASETS=()  # For run_probes (multiple datasets provided by user)
 TRAIN_DATASET=""  # For cross_dataset_probes
 TEST_DATASET=""   # For cross_dataset_probes
+PROBE_DATASET_NAME=""  # For steer_multi (optional probe dataset/mixture name)
 SBATCH_ARGS=()
 SCRIPT_ARGS=()
 SHOW_STATUS=false
@@ -217,6 +223,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --test-dataset)
             TEST_DATASET="$2"
+            SCRIPT_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --probe-dataset-name|--probe_dataset_name)
+            PROBE_DATASET_NAME="$2"
             SCRIPT_ARGS+=("$1" "$2")
             shift 2
             ;;
@@ -541,7 +552,10 @@ if [ "$RUN_LOCAL" = true ]; then
     echo "  Task:    $TASK"
     echo "  Model:   $MODEL_NAME"
     if [ "$TASK" == "steer_multi" ]; then
-        echo "  Dataset: $DATASET_NAME"
+        echo "  Dataset (steering target): $DATASET_NAME"
+        if [ -n "$PROBE_DATASET_NAME" ]; then
+            echo "  Probe dataset (mixture): $PROBE_DATASET_NAME"
+        fi
     elif [ "$TASK" == "run_probes" ]; then
         echo "  Datasets: ${USER_DATASETS[*]}"
     elif [ "$TASK" == "cross_dataset_probes" ]; then
@@ -562,7 +576,10 @@ else
     echo "  Task:    $TASK"
     echo "  Model:   $MODEL_NAME"
     if [ "$TASK" == "steer_multi" ]; then
-        echo "  Dataset: $DATASET_NAME"
+        echo "  Dataset (steering target): $DATASET_NAME"
+        if [ -n "$PROBE_DATASET_NAME" ]; then
+            echo "  Probe dataset (mixture): $PROBE_DATASET_NAME"
+        fi
     elif [ "$TASK" == "run_probes" ]; then
         echo "  Datasets: ${USER_DATASETS[*]}"
     elif [ "$TASK" == "cross_dataset_probes" ]; then

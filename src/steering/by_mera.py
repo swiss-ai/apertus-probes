@@ -156,7 +156,7 @@ class MERA(SteeringByProbe):
 
         # Derive the optimal value.
         theta = (
-            (alpha_transformed - wTx_transformed) / torch.norm(vector, p=2) ** 2 + 1e-8
+            (alpha_transformed - wTx_transformed) / (torch.norm(vector, p=2) ** 2 + 1e-8)
         ).unsqueeze(-1) * vector.unsqueeze(0).unsqueeze(0)
 
         # if self.debug:

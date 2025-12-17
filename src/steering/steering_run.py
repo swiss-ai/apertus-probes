@@ -165,6 +165,13 @@ device = args.device
 dataset_names = args.dataset_names
 model_names = args.model_names
 
+if len(dataset_names) != 1:
+    raise ValueError(
+        "This script evaluates ONE dataset at a time (compute_logits/compute_targets need one dataset_info). "
+        "Pass exactly one --dataset_names (the eval dataset). "
+        "Use --probe_dataset_name for the mixture probe source."
+    )
+
 # Derive the logical probe dataset / mixture name:
 # - If user passed --probe_dataset_name, use it verbatim.
 # - Otherwise, default to a '+'-joined mixture of all dataset_names.
@@ -183,6 +190,9 @@ for model_name in model_names:
     # Treat all dataset_names as one mixture
     mixture_name = probe_dataset_name
     all_results_list = []
+    
+    # Save LLM model name before it might get overwritten
+    llm_model_name = model_name
 
     #################################
     ####### Load model once ########
@@ -213,7 +223,7 @@ for model_name in model_names:
     mixed_y_error: list[float] = []
     mixed_activations_per_layer: dict[int, list[np.ndarray]] = {}
 
-    model_id = model_name.split("/")[-1]
+    model_id = llm_model_name.split("/")[-1]
 
     for dataset_name in dataset_names:
         print(f"[INFO] Loading dataset {dataset_name} for mixture {mixture_name}")
@@ -229,8 +239,8 @@ for model_name in model_names:
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
 
         # Acts and targets live under '<cache_dir>/<dataset>/<model>/'
-        file_path_acts = f"{cache_dir}{dataset_name}/{model_name.split('/')[1]}/acts.pkl"
-        file_path_targets = f"{cache_dir}{dataset_name}/{model_name.split('/')[-1]}/targets.pkl"
+        file_path_acts = f"{cache_dir}{dataset_name}/{llm_model_name.split('/')[-1]}/acts.pkl"
+        file_path_targets = f"{cache_dir}{dataset_name}/{llm_model_name.split('/')[-1]}/targets.pkl"
         print("[INFO] Loading targets from", file_path_targets)
         with open(file_path_targets, "rb") as f:
             y_targets = pickle.load(f)
@@ -348,7 +358,10 @@ for model_name in model_names:
     tasks_metrics = {"regression": "RMSE", "classification": "AUCROC"}
     steering_options = ["best", "worst", "median"]
 
-    print(f"[INFO] Steering {model_name} | mixture {mixture_name}")
+    steering_dataset_name = dataset_names[0]  # The dataset being steered on
+    print(f"[INFO] Steering {llm_model_name}")
+    print(f"[INFO]   Probe source (mixture): {mixture_name}")
+    print(f"[INFO]   Steering target (dataset): {steering_dataset_name}")
     probe_weights = {}
     probe_intercepts = {}
     probe_models = {}  # Store model names (L-{alpha} or Logit-L-{alpha}) for each layer
@@ -368,7 +381,7 @@ for model_name in model_names:
             # Validate: must have coefficients/intercepts for all layers
             if len(coefficients) != nr_layers or len(intercepts) != nr_layers:
                 raise ValueError(
-                    f"Expected {nr_layers} coefficients/intercepts for {(task, steer_flag)}, "
+                    f"Expected {nr_layers} coefficients/intercepts for {(task, steer_flag, metric)}, "
                     f"but got {len(coefficients)} coefficients and {len(intercepts)} intercepts. "
                     f"This may indicate missing layers in the probe dataframe."
                 )
@@ -416,9 +429,9 @@ for model_name in model_names:
         print(f"\n[{task.upper()}] (metric: {metric}):")
         for steer_flag in steering_options:
             layer = probe_layers.get((task, steer_flag), None)
-            # Get the model name used for this layer (e.g., L-0.5, Logit-L-0.25)
-            model_name = probe_models.get((task, steer_flag), {}).get(layer, "Unknown")
-            print(f"  {steer_flag.capitalize()}: Layer {layer} (model: {model_name})")
+            # Get the probe model name used for this layer (e.g., L-0.5, Logit-L-0.25)
+            probe_model_name = probe_models.get((task, steer_flag), {}).get(layer, "Unknown")
+            print(f"  {steer_flag.capitalize()}: Layer {layer} (model: {probe_model_name})")
     print("="*60 + "\n")
 
     ############################################################
@@ -464,9 +477,10 @@ for model_name in model_names:
 
     print("[INFO] Preparing steering method hyperparameters.")
 
-    # Hyperparameters save files for the mixture
-    save_dir_steering = f"{save_dir}{mixture_name}/{model_name.split('/')[1]}/steering/"
+    # Hyperparameters save files: combine mixture_name (probe source) and dataset_name (steering target)
+    save_dir_steering = f"{save_dir}{mixture_name}_steered_on_{steering_dataset_name}/{llm_model_name.split('/')[-1]}/steering/"
     os.makedirs(save_dir_steering, exist_ok=True)
+    print(f"[INFO] Results will be saved to: {save_dir_steering}")
     save_key = f"{fname}_{len(test_prompts)}"
     file_path_single_run = f"{save_dir_steering}{save_key}_method.pkl"
     file_path_all_runs = f"{save_dir_steering}{save_key}_steering_all_results.pkl"
@@ -480,7 +494,7 @@ for model_name in model_names:
     }
     layers_settings = {
         "all_layers": list(range(nr_layers)),
-        # "best_layer": [probe_best_layer],
+        # "best_layer": [],
         # "last_layer": [nr_layers],
     }
     token_pos_settings = {
@@ -555,7 +569,7 @@ for model_name in model_names:
                                 else:
                                     derive_with_logit = False
                                 derive_with_sigmoid = False
-
+                            
                             # best_alpha_last, best_alpha_exact, best_metric_last, best_metric_exact, _ = get_best_alpha_from_searches(model_name.split("/")[1], dataset_name, threshold=threshold, method_name=method_name_ours)
                             kwargs_mera = {
                                 "eta": eta,
@@ -567,7 +581,6 @@ for model_name in model_names:
                                 "derive_with_logit": derive_with_logit,
                                 "derive_with_all": True,
                                 "apply_token_pos_to_steer": token_pos_to_steer,
-                                "apply_layers_to_steer": layers_to_steer,
                                 "objective_key": objective_key,
                                 # "nr_samples": 210 if "mmlu" in dataset_name else 250,
                                 "best_alpha_last": None,  # FIXME
@@ -583,6 +596,19 @@ for model_name in model_names:
                             kwargs_mera["probe_models"] = probe_models[
                                 (setting[0], setting[1])
                             ]
+                            pw = kwargs_mera["probe_weights"]              # dict: layer -> w
+                            avail_layers = set(pw.keys())
+
+                            if layer_key == "best_layer":
+                                bestL = probe_layers.get((setting[0], setting[1]), None)
+                                desired_layers = [] if bestL is None else [bestL]
+                            elif layer_key == "all_layers":
+                                desired_layers = list(range(nr_layers))
+                            else:
+                                desired_layers = layers_to_steer
+
+                            # skip missing layers
+                            kwargs_mera["apply_layers_to_steer"] = sorted(set(desired_layers) & avail_layers)
 
                             kwargs_mera["mode"] = mode
                             kwargs_mera["logging_calibration_table_key"] = method_name
@@ -626,20 +652,28 @@ for model_name in model_names:
                         kwargs_additive = {
                             "eta": eta,
                             "apply_token_pos_to_steer": token_pos_to_steer,
-                            "apply_layers_to_steer": layers_to_steer,
                         }
                         for method_name, setting, mode in base_additive_methods:
-                            kwargs_additive["probe_weights"] = probe_weights[
-                                (setting[0], setting[1])
-                            ]
-                            kwargs_additive["probe_intercepts"] = probe_intercepts[
-                                (setting[0], setting[1])
-                            ]
-                            kwargs_additive["probe_models"] = probe_models[
-                                (setting[0], setting[1])
-                            ]
-                            kwargs_additive["mode"] = mode 
-                            benchmark_list[method_name] = kwargs_additive
+                            pw = probe_weights[(setting[0], setting[1])]
+                            pi = probe_intercepts[(setting[0], setting[1])]
+                            pm = probe_models[(setting[0], setting[1])]
+
+                            if layer_key == "best_layer":
+                                bestL = probe_layers.get((setting[0], setting[1]), None)
+                                desired_layers = [] if bestL is None else [bestL]
+                            else:
+                                desired_layers = layers_to_steer
+
+                            effective_layers = sorted(set(desired_layers) & avail_layers)
+                            
+                            benchmark_list[method_name] = {
+                                **kwargs_additive, 
+                                "apply_layers_to_steer": effective_layers,
+                                "probe_weights": pw,
+                                "probe_intercepts": pi,
+                                "probe_models": pm,
+                                "mode": mode,
+                            } 
                         for key, val in benchmark_list.items():
                             print(
                                 f"BENCHMARK {key}:",
@@ -703,14 +737,32 @@ for model_name in model_names:
         ####### Init logging per task #####
         ####################################
 
+        # Helper function to truncate tags to wandb's 64 character limit
+        def truncate_tag(tag, max_len=64):
+            """Truncate tag to max_len characters if needed."""
+            if len(tag) <= max_len:
+                return tag
+            return tag[:max_len-3] + "..."
+
+        # Prepare tags, truncating if necessary
+        tags_list = [
+            fname,
+            llm_model_name.split("/")[-1],
+            truncate_tag(mixture_name),
+            steering_dataset_name,
+            "multi_gpu"
+        ]
+
         wandb.init(
             project="MERA",
-            name=f"{mixture_name}-{model_name.split('/')[1]}-{fname}",
-            tags=[fname, model_name.split("/")[1], mixture_name, "multi_gpu"],
+            name=f"{mixture_name}_on_{steering_dataset_name}-{llm_model_name.split('/')[-1]}-{fname}",
+            tags=tags_list,
             group=f"multi_gpu_{fname}",
             config={
-                "dataset_name": mixture_name,
-                "model_name": model_name.split("/")[1],
+                "probe_dataset_name": mixture_name,  # Dataset(s) used to train probes
+                "steering_dataset_name": steering_dataset_name,  # Dataset being steered on
+                "dataset_name": mixture_name,  # Keep for backward compatibility
+                "model_name": llm_model_name.split("/")[-1],
                 "fname": fname,
                 "nr_test_samples": len(test_prompts),
                 "nr_ref_samples": len(ref_prompts),
@@ -732,8 +784,10 @@ for model_name in model_names:
             #    continue
 
             # Update table logging keys.
+            steering_kwargs = dict(steering_kwargs)
             steering_kwargs["logging_calibration_table_key"] = f"{steering_key}"
-
+            # Note: save_dir is now in base_kwargs, but keep it in steering_kwargs for backward compatibility
+            steering_kwargs["save_dir"] = save_dir_steering
             # Initialise and evaluate method on test set.
             print(f"\n[INFO] Processing: {steering_key}")
             steering_init = init_steering(steering_kwargs)(

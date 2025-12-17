@@ -115,8 +115,6 @@ class SteeringByProbe(Steering):
             print("[INFO] Probe models:", self.probe_models)
             print("[INFO] Mode:", self.mode)
             
-            print("[INFO] Nonzero coefficients:", [len(np.nonzero(weights)[0]) for weights in self.probe_weights.values()])
-
     def steer(self, activations: torch.Tensor, layer_idx: int) -> torch.Tensor:
         """Main functionality that steerst the model on a token position and layer basis."""
         if self.normalise_coeffs:

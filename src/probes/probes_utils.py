@@ -55,47 +55,35 @@ def postprocess_df_probes(
     return df
 
 
-def get_best_layer(
-    df,
-    dataset_name: Optional[str] = None,
-    task: str = "regression",
-    metric: str = "RMSE",
-    nr_rows: int = 1,
-    get_values: bool = True,
-    mode: str = "best",  # "best", "worst", or "median"
-):
-    """Finds best, worst, or median layer based on the given metric."""
-    ascending_order = True if task == "regression" else False
-    sorted_df = df.sort_values(
-        by=["Dataset", "Layer", metric],
-        ascending=[True, True, ascending_order],
-    )
-    grouped = sorted_df.groupby(["Dataset"])
-    cols = ["Dataset", "Layer"]
-    if mode == "worst":
-        df_selected = grouped[cols].tail(nr_rows)
-    elif mode == "median":
-        df_selected = (
-            grouped[cols]
-            .apply(
-                lambda x: x.iloc[
-                    max(0, (len(x) - nr_rows) // 2) : (len(x) + nr_rows) // 2
-                ]
-            )
-            .reset_index(drop=True)
-        )
-    else:  # "best"
-        df_selected = grouped[cols].head(nr_rows)
+def get_best_layer(df, task: str, metric: str, mode: str = "best") -> int | None:
+    df = df[df["Task"] == task].copy()
+    if len(df) == 0:
+        return None
 
-    df_selected = df_selected.reset_index()
-    if dataset_name is not None:
-        df_selected = df_selected.loc[
-            (df_selected["Dataset"].str.contains(dataset_name))
-        ]
-    if get_values:
-        return df_selected["Layer"].iloc[0]
-    print("DEBUG WARNING best_layer: ", df_selected)
-    return df_selected
+    # direction: regression metrics (RMSE) lower better, classification (AUCROC) higher better
+    lower_is_better = (task == "regression")
+
+    # pick best row per layer first (best alpha/model within that layer)
+    df_layer_best = (
+        df.sort_values(["Layer", metric], ascending=[True, lower_is_better])
+          .groupby("Layer", sort=False)
+          .head(1)
+    )
+    if len(df_layer_best) == 0:
+        return None
+
+    # now choose layer across layers
+    if mode == "best":
+        row = df_layer_best.sort_values(metric, ascending=lower_is_better).iloc[0]
+    elif mode == "worst":
+        row = df_layer_best.sort_values(metric, ascending=not lower_is_better).iloc[0]
+    elif mode == "median":
+        df_sorted = df_layer_best.sort_values(metric, ascending=lower_is_better)
+        row = df_sorted.iloc[len(df_sorted) // 2]
+    else:
+        raise ValueError(mode)
+
+    return int(row["Layer"])
 
 
 def get_best_coefficients(
@@ -113,6 +101,9 @@ def get_best_coefficients(
         If get_values=True: tuple of (coefficients_array, intercepts_array)
         If get_values=False: DataFrame with selected rows
     """
+    # CRITICAL: Filter by task first to ensure we only select models of the correct task type
+    df = df[df["Task"] == task].copy()
+    
     ascending_order = True if task == "regression" else False
     sorted_df = df.sort_values(
         by=["Dataset", "Layer", metric],

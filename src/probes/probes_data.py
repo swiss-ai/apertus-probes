@@ -124,12 +124,34 @@ def load_datasets(
     y_error_last = np.concatenate(y_error_last_list, axis=0)
     activations_exact = merge_activations(activations_exact_list)
     activations_last = merge_activations(activations_last_list)
+    y_correct_exact = np.array(y_correct_exact, dtype=float)
+    y_correct_last = np.array(y_correct_last, dtype=float)
+
+    # Subsample if total examples exceed max_samples
+    n_samples = len(y_error_exact)
+    if n_samples > config.max_samples:
+        print(f"[SUBSAMPLE] Total samples: {n_samples} > {config.max_samples}, subsampling to {config.max_samples}")
+        rng = np.random.RandomState(config.seed)
+        indices = rng.choice(n_samples, size=config.max_samples, replace=False)
+        indices = np.sort(indices)  # Keep original order for reproducibility
+        
+        # Subsample targets
+        y_error_exact = y_error_exact[indices]
+        y_error_last = y_error_last[indices]
+        y_correct_exact = y_correct_exact[indices]
+        y_correct_last = y_correct_last[indices]
+        
+        # Subsample activations for each layer
+        activations_exact = {layer: acts[indices] for layer, acts in activations_exact.items()}
+        activations_last = {layer: acts[indices] for layer, acts in activations_last.items()}
+        
+        print(f"[SUBSAMPLE] Completed. New sample count: {len(y_error_exact)}")
 
     return (
         y_error_exact,
-        np.array(y_correct_exact, dtype=float),
+        y_correct_exact,
         activations_exact,
         y_error_last,
-        np.array(y_correct_last, dtype=float),
+        y_correct_last,
         activations_last,
     )

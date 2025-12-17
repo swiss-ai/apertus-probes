@@ -85,6 +85,7 @@ class ProbeConfig:
     max_workers: int = 25
     alphas: tuple = (0.5, 0.25, 0.1, 0.05)
     token_pos: str = "both"           # "exact, last or both"
+    max_samples: int = 10000           # subsample if total examples > this
     # Note: Linear regression models (Lasso, Ridge) and logistic regression (LogitRegression) are always run
 
 # -------------------------
@@ -128,11 +129,11 @@ def initialise_regression_models(seed: int, alphas) -> dict:
         models[f"L-{alpha}"] = Lasso(
             alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
         )
-    # Add Ridge models (L2 regularization)
-    for alpha in alphas:
-        models[f"R-{alpha}"] = Ridge(
-            alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
-        )
+    # # Add Ridge models (L2 regularization)
+    # for alpha in alphas:
+    #     models[f"R-{alpha}"] = Ridge(
+    #         alpha=alpha, fit_intercept=True, max_iter=2000, random_state=seed
+    #     )
     # Add LogitRegression models (Lasso with logit transform)
     for alpha in alphas:
         models[f"Logit-L-{alpha}"] = LogitRegression(
@@ -312,37 +313,36 @@ def train_model_on_layer(
         }
         print("Token-Pos:", token_pos, "Probe-Name:", probe_name, "Layer:", layer_idx, "Results:", metrics)
 
-        if not no_coeffs:
-            # Compute residuals (for regression only, to match probes_train convention)
-            if task_type == "regression":
-                residuals = (y_test - y_pred).tolist()
-            else:
-                residuals = []
+        # Compute residuals (for regression only, to match probes_train convention)
+        if task_type == "regression":
+            residuals = (y_test - y_pred).tolist()
+        else:
+            residuals = []
 
-            row = {
-                # Match naming/export style from probes_train.py
-                "Dataset": dataset_name_for_logging,
-                "LLM_model": config.model_name,
-                "Task": task_type,
-                "Model": probe_name,
-                "Inputs": "activations",
-                "Error-Type": config.error_type,
-                "Layer": layer_idx,
-                "Residuals": residuals,
-                "Coefficients": coef.flatten().tolist(),
-                "Nonzero-Features": non_zero_coeffs.tolist(),
-                "Nonzero-Features-Count": int(len(non_zero_coeffs)),
-                "No-Coefficients": no_coeffs,
-                "Attempt": m,
-                "Model-Index": m + 1,
-                "Token-Pos": token_pos,
-                "y_pred": y_pred,
-                "y_test": y_test,
-                "Coef-norm": coef_norm,
-                "Intercept": intercept if intercept is not None else None,
-                **metrics,
-            }
-            results_for_layer.append(row)
+        row = {
+            # Match naming/export style from probes_train.py
+            "Dataset": dataset_name_for_logging,
+            "LLM_model": config.model_name,
+            "Task": task_type,
+            "Model": probe_name,
+            "Inputs": "activations",
+            "Error-Type": config.error_type,
+            "Layer": layer_idx,
+            "Residuals": residuals,
+            "Coefficients": coef.flatten().tolist(),
+            "Nonzero-Features": non_zero_coeffs.tolist(),
+            "Nonzero-Features-Count": int(len(non_zero_coeffs)),
+            "No-Coefficients": no_coeffs,
+            "Attempt": m,
+            "Model-Index": m + 1,
+            "Token-Pos": token_pos,
+            "y_pred": y_pred,
+            "y_test": y_test,
+            "Coef-norm": coef_norm,
+            "Intercept": intercept if intercept is not None else None,
+            **metrics,
+        }
+        results_for_layer.append(row)
 
     return results_for_layer
 

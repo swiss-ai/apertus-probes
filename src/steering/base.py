@@ -263,7 +263,7 @@ class Steering:
                 device=self.model.device,
                 flexible_match=True,
                 dataset_info=self.dataset_info,
-                save_dir=self.save_dir,
+                save_dir=self.steering_kwargs.get("save_dir", None),
                 save=False,
                 grad=grad,
                 use_cache=True,
