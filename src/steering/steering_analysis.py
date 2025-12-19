@@ -53,7 +53,7 @@ DEFAULT_METHODS = {
     "Vanilla Contrastive": [
         "vanilla_contrastive_1.0_all_layers_all_token_pos_derive_all_with_both",
         "vanilla_contrastive_1.0_all_layers_all_token_pos",  # fallback
-        "vanilla_contrastive",  # fallback - matches any vanilla_contrastive_* variant
+        # Removed overly broad "vanilla_contrastive" fallback to avoid multiple matches
     ],
     "Baseline Error (Additive)"        : ["additive_probe_1.0_all_layers_all_token_pos"],
 }
@@ -68,9 +68,13 @@ def is_mixture_dataset(folder_name: str) -> bool:
     
     Mixture datasets have the format:
     dataset1+dataset2+..._steered_on_target_dataset
+    
+    Note: Single dataset folders like "dataset_steered_on_dataset" are NOT mixtures.
+    Only folders with '+' (multiple datasets) are considered mixtures.
     """
     # Extract just the folder name if it's a path
     name = folder_name.split("/")[-1]
+    # Must have both '+' (multiple datasets) and '_steered_on_' to be a mixture
     return "+" in name and "_steered_on_" in name
 
 
@@ -81,11 +85,17 @@ def create_mixture_label(folder_name: str) -> str:
         mmlu_high_school+mmlu_professional+..._steered_on_mmlu_professional
         -> "Mixture→Mmlu-Professional"
     """
-    if "_steered_on_" in folder_name:
-        parts = folder_name.split("_steered_on_")
-        target = parts[-1] if len(parts) > 1 else "unknown"
-        return f"Mixture→{target.replace('_', '-').title()}"
-    return folder_name.replace("_", "-").title()
+    try:
+        if "_steered_on_" in folder_name:
+            parts = folder_name.split("_steered_on_")
+            target = parts[-1] if len(parts) > 1 else "unknown"
+            # Preserve existing dashes and underscores, only replace underscores in target
+            target_clean = target.replace("_", "-")
+            return f"Mixture→{target_clean.title()}"
+        return folder_name.replace("_", "-").title()
+    except Exception as e:
+        # Fallback to a safe label if something goes wrong
+        return folder_name.replace("_", "-").replace("+", "+")
 
 
 def discover_datasets(model_folder: str, root_path: Path = ROOT) -> Dict[str, str]:
@@ -270,6 +280,7 @@ def analyze_steering_results(
     plot: bool = True,
     save_path: Optional[str] = None,
     debug: bool = True,
+    plot_linear_logit_stacked: bool = False,
 ) -> pd.DataFrame:
     """
     Analyze steering results and optionally create plots.
@@ -310,6 +321,10 @@ def analyze_steering_results(
     debug : bool
         Whether to print debug information
         Default: True
+    plot_linear_logit_stacked : bool
+        If True, create stacked plots with linear on top and logit on bottom,
+        sharing the same x-axis. Requires collecting data for both steering types.
+        Default: False
     
     Returns:
     --------
@@ -325,6 +340,30 @@ def analyze_steering_results(
         methods = DEFAULT_METHODS
     if root_path is None:
         root_path = ROOT
+    
+    # Handle case where datasets is accidentally passed as a tuple (e.g., from notebook cell)
+    if isinstance(datasets, tuple) and len(datasets) == 1 and isinstance(datasets[0], dict):
+        datasets = datasets[0]
+    if isinstance(models, tuple) and len(models) == 1 and isinstance(models[0], dict):
+        models = models[0]
+    if isinstance(methods, tuple) and len(methods) == 1 and isinstance(methods[0], dict):
+        methods = methods[0]
+    
+    # Handle case where datasets is accidentally passed as a tuple (e.g., from notebook cell)
+    if isinstance(datasets, tuple) and len(datasets) == 1 and isinstance(datasets[0], dict):
+        datasets = datasets[0]
+    if isinstance(models, tuple) and len(models) == 1 and isinstance(models[0], dict):
+        models = models[0]
+    if isinstance(methods, tuple) and len(methods) == 1 and isinstance(methods[0], dict):
+        methods = methods[0]
+    
+    # Validate that datasets is a dict, not a tuple
+    if not isinstance(datasets, dict):
+        raise TypeError(f"datasets must be a dict, got {type(datasets).__name__}: {datasets}")
+    if not isinstance(models, dict):
+        raise TypeError(f"models must be a dict, got {type(models).__name__}: {models}")
+    if not isinstance(methods, dict):
+        raise TypeError(f"methods must be a dict, got {type(methods).__name__}: {methods}")
     
     if debug:
         print(f"Using steering type: {steering_type if steering_type else 'all'}")
@@ -387,10 +426,16 @@ def analyze_steering_results(
     # Process datasets - supports both regular and mixture datasets
     for ds_label, ds_folder in datasets.items():
         # If user provided a mixture folder name but no custom label, create one
+        # Only process as mixture if it actually contains '+' (multiple datasets)
         if is_mixture_dataset(ds_folder) and ds_label == ds_folder:
-            ds_label = create_mixture_label(ds_folder)
-            if debug:
-                print(f"[INFO] Auto-generated label for mixture: {ds_label}")
+            try:
+                ds_label = create_mixture_label(ds_folder)
+                if debug:
+                    print(f"[INFO] Auto-generated label for mixture: {ds_label}")
+            except Exception as e:
+                if debug:
+                    print(f"[WARN] Error creating mixture label for {ds_folder}: {e}")
+                # Continue with original label if label creation fails
         for model_label, model_folder in models.items():
             df = load_steering_results_local(ds_folder, model_folder)
             if df.empty:
@@ -537,7 +582,71 @@ def analyze_steering_results(
     
     # Plot if requested
     if plot and not res.empty:
-        _plot_results(res, models, datasets, methods, token_position, save_path=save_path)
+        if plot_linear_logit_stacked:
+            # Collect data for both linear and logit
+            # Use current results if they match, otherwise collect separately
+            if steering_type == "linear":
+                res_linear = res.copy()
+                # Collect logit data
+                res_logit = analyze_steering_results(
+                    models=models,
+                    datasets=datasets,
+                    methods=methods,
+                    token_position=token_position,
+                    steering_type="logit",
+                    calib_target=calib_target,
+                    n_test=n_test,
+                    root_path=root_path,
+                    plot=False,
+                    debug=False,
+                )
+            elif steering_type == "logit":
+                res_logit = res.copy()
+                # Collect linear data
+                res_linear = analyze_steering_results(
+                    models=models,
+                    datasets=datasets,
+                    methods=methods,
+                    token_position=token_position,
+                    steering_type="linear",
+                    calib_target=calib_target,
+                    n_test=n_test,
+                    root_path=root_path,
+                    plot=False,
+                    debug=False,
+                )
+            else:
+                # Collect both
+                res_linear = analyze_steering_results(
+                    models=models,
+                    datasets=datasets,
+                    methods=methods,
+                    token_position=token_position,
+                    steering_type="linear",
+                    calib_target=calib_target,
+                    n_test=n_test,
+                    root_path=root_path,
+                    plot=False,
+                    debug=False,
+                )
+                res_logit = analyze_steering_results(
+                    models=models,
+                    datasets=datasets,
+                    methods=methods,
+                    token_position=token_position,
+                    steering_type="logit",
+                    calib_target=calib_target,
+                    n_test=n_test,
+                    root_path=root_path,
+                    plot=False,
+                    debug=False,
+                )
+            
+            _plot_results_stacked(
+                res_linear, res_logit, models, datasets, methods, token_position, save_path=save_path
+            )
+        else:
+            _plot_results(res, models, datasets, methods, token_position, save_path=save_path)
     
     return res
 
@@ -582,7 +691,7 @@ def _plot_results(
         raise ValueError("token_position must be 'exact', 'last', or 'both'")
 
     n_plots = len(spi_columns)
-    fig, axes = plt.subplots(1, n_plots * 2, figsize=(18 * n_plots, 5))
+    fig, axes = plt.subplots(1, n_plots * 2, figsize=(25 * n_plots, 10))
 
     plot_idx = 0
     for spi_col in spi_columns:
@@ -610,9 +719,10 @@ def _plot_results(
 
         ax0.axhline(0, linewidth=1)
         ax0.set_xticks(x)
-        ax0.set_xticklabels(models_order, ha="center")
-        ax0.set_ylabel("Steering Performance Impact (SPI)")
-        ax0.set_title(f"Model-specific View ({token_pos_label})")
+        ax0.set_xticklabels(models_order, ha="center", rotation=90, fontsize=25)
+        ax0.set_ylabel("Steering Performance Impact (SPI)", fontsize=25)
+        ax0.set_title(f"Model-specific View ({token_pos_label})", fontsize=30)
+        ax0.tick_params(axis='y', labelsize=25)
 
         # Dataset-specific view
         ax1 = axes[plot_idx + 1]
@@ -632,10 +742,9 @@ def _plot_results(
 
         ax1.axhline(0, linewidth=1)
         ax1.set_xticks(x)
-        ax1.set_xticklabels(datasets_order, ha="center")
-        ax1.set_ylabel(f"SPI ({token_pos_label})")
-        ax1.set_title(f"Dataset-specific View ({token_pos_label})")
-        
+        ax1.set_xticklabels(datasets_order, ha="center", rotation=90, fontsize=25)
+        ax1.set_title(f"Dataset-specific View ({token_pos_label})", fontsize=30)
+        ax1.tick_params(axis='y', labelsize=25)
         plot_idx += 2
 
     for ax in axes:
@@ -648,7 +757,7 @@ def _plot_results(
         loc="upper center",
         ncol=len(methods_order),
         bbox_to_anchor=(0.5, 1.12),
-        fontsize=10,
+        fontsize=30,
         frameon=False,
     )
 
@@ -666,6 +775,193 @@ def _plot_results(
         
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Plot saved to: {save_path}")
+    
+    plt.show()
+
+
+def _plot_results_stacked(
+    res_linear: pd.DataFrame,
+    res_logit: pd.DataFrame,
+    models: Dict[str, str],
+    datasets: Dict[str, str],
+    methods: Dict[str, List[str]],
+    token_position: str,
+    save_path: Optional[str] = None,
+):
+    """
+    Create stacked plots with linear on top and logit on bottom, sharing x-axes.
+    
+    Parameters:
+    -----------
+    res_linear : pd.DataFrame
+        Results dataframe for linear steering type
+    res_logit : pd.DataFrame
+        Results dataframe for logit steering type
+    models : dict
+        Dictionary mapping model labels to model folder names
+    datasets : dict
+        Dictionary mapping dataset labels to dataset folder names
+    methods : dict
+        Dictionary mapping method labels to lists of steering key prefixes
+    token_position : str
+        Token position used: "exact", "last", or "both"
+    save_path : str, optional
+        Path to save the plot. If None, plot is only displayed.
+    """
+    methods_order = list(methods.keys())
+    models_order = list(models.keys())
+    datasets_order = list(datasets.keys())
+
+    spi_columns = []
+    if token_position in ["exact", "both"]:
+        spi_columns.append("SPI Exact")
+    if token_position in ["last", "both"]:
+        spi_columns.append("SPI Last")
+
+    if not spi_columns:
+        raise ValueError("token_position must be 'exact', 'last', or 'both'")
+
+    # Create figure with 2 rows (linear, logit) and 2 columns per token position (model view, dataset view)
+    n_cols = len(spi_columns) * 2
+    n_rows = 2  # Linear and Logit
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(25 * len(spi_columns), 10), sharex='col')
+    
+    # Handle axes indexing (axes is 2D array: [row, col])
+    if n_cols == 1:
+        axes = axes.reshape(2, 1)
+
+    for col_idx, spi_col in enumerate(spi_columns):
+        token_pos_label = spi_col.replace("SPI ", "")
+        
+        # Linear row (top, row 0)
+        linear_model_ax = axes[0, col_idx * 2]
+        linear_dataset_ax = axes[0, col_idx * 2 + 1]
+        
+        # Logit row (bottom, row 1)
+        logit_model_ax = axes[1, col_idx * 2]
+        logit_dataset_ax = axes[1, col_idx * 2 + 1]
+        
+        # Plot linear results
+        if not res_linear.empty:
+            # Model-specific view (linear)
+            grouped_model_linear = (
+                res_linear.groupby(["Model", "Method"])[spi_col]
+                   .mean()
+                   .unstack("Method")
+                   .reindex(models_order)
+            )
+            x_models = np.arange(len(models_order))
+            width = 0.09
+            k = len(methods_order)
+            offsets = (np.arange(k) - (k - 1) / 2) * width
+            
+            for i, method in enumerate(methods_order):
+                if method not in grouped_model_linear.columns:
+                    continue
+                vals = grouped_model_linear[method].values
+                linear_model_ax.bar(x_models + offsets[i], vals, width=width, label=method)
+            
+            linear_model_ax.axhline(0, linewidth=1)
+            linear_model_ax.set_xticks(x_models)
+            linear_model_ax.set_xticklabels([])  # Hide x-axis labels on top row (shared with bottom)
+            linear_model_ax.set_ylabel("Steering Performance Impact (SPI)", fontsize=25)
+            linear_model_ax.set_title(f"Linear - Model-specific View ({token_pos_label})", fontsize=30)
+            linear_model_ax.tick_params(axis='y', labelsize=25)
+            
+            # Dataset-specific view (linear)
+            grouped_ds_linear = (
+                res_linear.groupby(["Dataset", "Method"])[spi_col]
+                   .mean()
+                   .unstack("Method")
+                   .reindex(datasets_order)
+            )
+            x_datasets = np.arange(len(datasets_order))
+            
+            for i, method in enumerate(methods_order):
+                if method not in grouped_ds_linear.columns:
+                    continue
+                vals = grouped_ds_linear[method].values
+                linear_dataset_ax.bar(x_datasets + offsets[i], vals, width=width, label=method)
+            
+            linear_dataset_ax.axhline(0, linewidth=1)
+            linear_dataset_ax.set_xticks(x_datasets)
+            linear_dataset_ax.set_xticklabels([])  # Hide x-axis labels on top row (shared with bottom)
+            linear_dataset_ax.set_title(f"Linear - Dataset-specific View ({token_pos_label})", fontsize=30)
+            linear_dataset_ax.tick_params(axis='y', labelsize=25)
+        
+        # Plot logit results
+        if not res_logit.empty:
+            # Model-specific view (logit)
+            grouped_model_logit = (
+                res_logit.groupby(["Model", "Method"])[spi_col]
+                   .mean()
+                   .unstack("Method")
+                   .reindex(models_order)
+            )
+            
+            for i, method in enumerate(methods_order):
+                if method not in grouped_model_logit.columns:
+                    continue
+                vals = grouped_model_logit[method].values
+                logit_model_ax.bar(x_models + offsets[i], vals, width=width, label=method)
+            
+            logit_model_ax.axhline(0, linewidth=1)
+            logit_model_ax.set_xticks(x_models)
+            logit_model_ax.set_xticklabels(models_order, ha="center", rotation=90, fontsize=25)
+            logit_model_ax.set_ylabel("Steering Performance Impact (SPI)", fontsize=25)
+            logit_model_ax.set_title(f"Logit - Model-specific View ({token_pos_label})", fontsize=30)
+            logit_model_ax.tick_params(axis='y', labelsize=25)
+            
+            # Dataset-specific view (logit)
+            grouped_ds_logit = (
+                res_logit.groupby(["Dataset", "Method"])[spi_col]
+                   .mean()
+                   .unstack("Method")
+                   .reindex(datasets_order)
+            )
+            
+            for i, method in enumerate(methods_order):
+                if method not in grouped_ds_logit.columns:
+                    continue
+                vals = grouped_ds_logit[method].values
+                logit_dataset_ax.bar(x_datasets + offsets[i], vals, width=width, label=method)
+            
+            logit_dataset_ax.axhline(0, linewidth=1)
+            logit_dataset_ax.set_xticks(x_datasets)
+            logit_dataset_ax.set_xticklabels(datasets_order, ha="center", rotation=90, fontsize=25)  # Show labels on bottom row
+            logit_dataset_ax.set_title(f"Logit - Dataset-specific View ({token_pos_label})", fontsize=30)
+            logit_dataset_ax.tick_params(axis='y', labelsize=25)
+    
+    # Remove individual legends
+    for row in axes:
+        for ax in row:
+            ax.legend().remove()
+    
+    # Add shared legend at the top
+    handles_labels = axes[0, 0].get_legend_handles_labels()
+    if handles_labels[0]:  # Only if there are handles
+        fig.legend(
+            handles_labels[0],
+            handles_labels[1],
+            loc="upper center",
+            ncol=len(methods_order),
+            bbox_to_anchor=(0.5, 1.02),
+            fontsize=30,
+            frameon=False,
+        )
+    
+    plt.tight_layout()
+    
+    # Save plot if path is provided
+    if save_path is not None:
+        save_path_obj = Path(save_path)
+        save_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        
+        if not save_path_obj.suffix:
+            save_path = str(save_path_obj) + ".png"
+        
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Stacked plot saved to: {save_path}")
     
     plt.show()
 
@@ -735,6 +1031,22 @@ def get_spi_dataframe(
         methods = DEFAULT_METHODS
     if root_path is None:
         root_path = ROOT
+    
+    # Handle case where datasets is accidentally passed as a tuple (e.g., from notebook cell)
+    if isinstance(datasets, tuple) and len(datasets) == 1 and isinstance(datasets[0], dict):
+        datasets = datasets[0]
+    if isinstance(models, tuple) and len(models) == 1 and isinstance(models[0], dict):
+        models = models[0]
+    if isinstance(methods, tuple) and len(methods) == 1 and isinstance(methods[0], dict):
+        methods = methods[0]
+    
+    # Validate that datasets is a dict, not a tuple
+    if not isinstance(datasets, dict):
+        raise TypeError(f"datasets must be a dict, got {type(datasets).__name__}: {datasets}")
+    if not isinstance(models, dict):
+        raise TypeError(f"models must be a dict, got {type(models).__name__}: {models}")
+    if not isinstance(methods, dict):
+        raise TypeError(f"methods must be a dict, got {type(methods).__name__}: {methods}")
     
     all_records = []
     
@@ -1351,11 +1663,20 @@ def plot_spi_heatmap_on_axis(
             ax.set_title(title or f"{method}\n({probe_type})", fontsize=10)
         return ax
     
+    # Auto-detect value column if not provided
+    if value_column is None:
+        if "SPI Difference" in filtered_df.columns:
+            value_column = "SPI Difference"
+        elif "SPI" in filtered_df.columns:
+            value_column = "SPI"
+        else:
+            raise ValueError(f"Could not find 'SPI' or 'SPI Difference' column in dataframe. Available columns: {list(filtered_df.columns)}")
+    
     # Pivot to create matrix: models (rows) x datasets (columns)
     heatmap_data = filtered_df.pivot_table(
         index="Model",
         columns="Dataset",
-        values="SPI",
+        values=value_column,
         aggfunc="mean"  # In case there are duplicates
     )
     
@@ -1368,6 +1689,10 @@ def plot_spi_heatmap_on_axis(
         x_ticklabels = heatmap_data.columns if show_xlabel else False
         y_ticklabels = heatmap_data.index if show_ylabel else False
         
+        # Determine center and label based on value column
+        center_val = 0 if value_column == "SPI Difference" else None
+        label_text = value_column
+        
         sns.heatmap(
             heatmap_data,
             annot=annotate,
@@ -1375,8 +1700,8 @@ def plot_spi_heatmap_on_axis(
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
-            center=0,
-            cbar_kws={"label": "SPI"},
+            center=center_val,
+            cbar_kws={"label": label_text},
             ax=ax,
             linewidths=0.5,
             linecolor='gray',
