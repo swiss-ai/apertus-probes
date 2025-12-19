@@ -266,7 +266,7 @@ def plot_rmse_comparison_multi(
     ax.legend(
         legend_handles,
         legend_labels,
-        fontsize=10,
+        fontsize=20,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         borderaxespad=0.0,
@@ -275,10 +275,12 @@ def plot_rmse_comparison_multi(
     )
 
     # Styling
-    plt.title(title_suffix, fontsize=16, pad=14)
-    plt.xlabel("Layer", fontsize=14)
-    plt.ylabel("RMSE", fontsize=14)
+    plt.title(title_suffix, fontsize=30, pad=14)
+    plt.xlabel("Layer", fontsize=30)
+    plt.ylabel("RMSE", fontsize=20)
     plt.grid(True, linestyle=":", alpha=0.6)
+    # Increase tick label font size
+    ax.tick_params(axis='both', which='major', labelsize=18)
     plt.tight_layout(rect=[0, 0, 0.8, 1])
     plt.show()
     
@@ -294,6 +296,14 @@ def plot_rmse_on_axis(
     start_layer: Optional[int] = None,
     end_layer: Optional[int] = None,
     add_legend: bool = True,
+    title_size: int = 40,
+    xlabel_size: int = 16,
+    ylabel_size: int = 16,
+    tick_label_size: int = 25,
+    legend_size: int = 16,
+    title_pad: float = 16,
+    show_xlabel: bool = True,
+    show_ylabel: bool = True,
 ):
     """
     Plot RMSE comparison on a given axis for multiple LLMs and probe models.
@@ -308,6 +318,14 @@ def plot_rmse_on_axis(
         start_layer: Optional start layer (inclusive). If None, plots from first layer.
         end_layer: Optional end layer (inclusive). If None, plots to last layer.
         add_legend: Whether to add a legend to this axis (default: True)
+        title_size: Font size for the title (default: 20)
+        xlabel_size: Font size for the x-axis label (default: 16)
+        ylabel_size: Font size for the y-axis label (default: 16)
+        tick_label_size: Font size for tick labels (default: 18)
+        legend_size: Font size for legend (default: 16)
+        title_pad: Padding for the title (default: 16)
+        show_xlabel: Whether to show x-axis label (default: True). Set False for inner subplots.
+        show_ylabel: Whether to show y-axis label (default: True). Set False for inner subplots.
     
     Returns:
         tuple: (legend_handles, legend_labels) for use in shared legends
@@ -326,7 +344,7 @@ def plot_rmse_on_axis(
         ax.legend(
             legend_handles,
             legend_labels,
-            fontsize=10,
+            fontsize=legend_size,
             loc="center left",
             bbox_to_anchor=(1.02, 0.5),
             borderaxespad=0.0,
@@ -335,10 +353,18 @@ def plot_rmse_on_axis(
         )
 
     # Styling
-    ax.set_title(title_suffix, fontsize=16, pad=14)
-    ax.set_xlabel("Layer", fontsize=14)
-    ax.set_ylabel("RMSE", fontsize=14)
+    ax.set_title(title_suffix, fontsize=title_size, pad=title_pad)
+    if show_xlabel:
+        ax.set_xlabel("Layer", fontsize=xlabel_size)
+    else:
+        ax.set_xlabel("")  # Empty label for inner subplots
+    if show_ylabel:
+        ax.set_ylabel("RMSE", fontsize=ylabel_size)
+    else:
+        ax.set_ylabel("")  # Empty label for inner subplots
     ax.grid(True, linestyle=":", alpha=0.6)
+    # Increase tick label font size
+    ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
     
     return legend_handles, legend_labels
 
@@ -544,6 +570,8 @@ def plot_accuracy_comparison_multi(
     plt.xlabel("Layer", fontsize=14)
     plt.ylabel(metric_label, fontsize=14)
     plt.grid(True, linestyle=":", alpha=0.6)
+    # Increase tick label font size
+    ax.tick_params(axis='both', which='major', labelsize=14)
     plt.tight_layout(rect=[0, 0, 0.8, 1])
     plt.show()
     
@@ -608,6 +636,8 @@ def plot_accuracy_on_axis(
     ax.set_xlabel("Layer", fontsize=14)
     ax.set_ylabel(metric_label, fontsize=14)
     ax.grid(True, linestyle=":", alpha=0.6)
+    # Increase tick label font size
+    ax.tick_params(axis='both', which='major', labelsize=14)
     
     return legend_handles, legend_labels
 
