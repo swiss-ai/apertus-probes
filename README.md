@@ -2,6 +2,10 @@
 
 A project for training and evaluating linear probes on language model activations to predict model errors (hallucinations). This codebase supports multiple datasets, models, and probe configurations, with capabilities for mixed-dataset training, cross-dataset evaluation, and activation steering.
 
+## Result
+
+The result of the project are presented in the [Report (PDF)](<DSL_Project_16 - Final_Report.pdf>)
+
 ## Project Overview
 
 This project implements a pipeline for:
