@@ -1,0 +1,652 @@
+%%
+%% This is file `sample-sigconf.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `all,proceedings,bibtex,sigconf')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sample-sigconf.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, a s listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%%
+%% The first command in your LaTeX source must be the \documentclass
+%% command.
+%%
+%% For submission and review of your manuscript please change the
+%% command to \documentclass[manuscript, screen, review]{acmart}.
+%%
+%% When submitting camera ready or to TAPS, please change the command
+%% to \documentclass[sigconf]{acmart} or whichever template is required
+%% for your publication.
+%%
+%%
+\documentclass[sigconf]{acmart}
+\settopmatter{printacmref=true}
+
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+\setcopyright{acmlicensed}
+\copyrightyear{2025}
+\acmYear{2018}
+% \acmDOI{XXXXXXX.XXXXXXX}
+
+%% These commands are for a PROCEEDINGS abstract or paper.
+\acmConference[263-3300-10L Data Science Lab]{}{\today}{Zurich, Switzerland}
+%%
+%%  Uncomment \acmBooktitle if the title of the proceedings is different
+%%  from ``Proceedings of ...''!
+%%
+%%\acmBooktitle{Woodstock '18: ACM Symposium on Neural Gaze Detection,
+%%  June 03--05, 2018, Woodstock, NY}
+\acmISBN{978-1-4503-XXXX-X/18/06}
+
+
+%%
+%% Submission ID.
+%% Use this when submitting an article to a sponsored event. You'll
+%% receive a unique submission ID from the organizers
+%% of the event, and this ID should be used as the parameter to this command.
+%%\acmSubmissionID{123-A56-BU3}
+
+%%
+%% For managing citations, it is recommended to use bibliography
+%% files in BibTeX format.
+%%
+%% You can then either use BibTeX with the ACM-Reference-Format style,
+%% or BibLaTeX with the acmnumeric or acmauthoryear sytles, that include
+%% support for advanced citation of software artefact from the
+%% biblatex-software package, also separately available on CTAN.
+%%
+%% Look at the sample-*-biblatex.tex files for templates showcasing
+%% the biblatex styles.
+%%
+
+%%
+%% The majority of ACM publications use numbered citations and
+%% references.  The command \citestyle{authoryear} switches to the
+%% "author year" style.
+%%
+%% If you are preparing content for an event
+%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
+%% citations and references.
+%% Uncommenting
+%% the next command will enable that style.
+%%\citestyle{acmauthoryear}
+
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%%
+%% The "title" command has an optional parameter,
+%% allowing the author to define a "short title" to be used in page headers.
+\title[DSL]{Detecting and reducing hallucination in
+multiple-choice questions with Apertus model}
+
+%%
+%% The "author" command and its associated commands are used to define
+%% the authors and their affiliations.
+%% Of note is the shared affiliation of the first two authors, and the
+%% "authornote" and "authornotemark" commands
+%% used to denote shared contribution to the research.
+
+\author{Aleks Stepancic}
+\orcid{0000-0002-9425-1163}
+\authornote{Equal contribution.}
+\affiliation{%
+  \institution{Department of Computer Science \\ ETH Zurich, Switzerland}
+  \city{}
+  \state{}
+  \country{}
+}
+\author{Tu Nguyen}
+\authornotemark[1]
+\orcid{0000-0002-9425-1163}
+\affiliation{
+  \institution{Department of Computer Science \\ ETH Zurich, Switzerland}
+  \city{}
+  \state{}
+  \country{}
+}
+
+
+
+% \author{Student Name}
+% \authornotemark[1]
+% \email{webmaster@marysville-ohio.com}
+% \affiliation{%
+%   \institution{Institute for Clarity in Documentation}
+%   \city{Dublin}
+%   \state{Ohio}
+%   \country{USA}
+% }
+
+\author{Eduard Durech}
+\orcid{0000-0002-9425-1163}
+\affiliation{%
+  \institution{ETH AI Center, ETH Zurich, Switzerland}
+  \city{}
+  \state{}
+  \country{}
+}
+\author{Anna Hedström}
+\orcid{0000-0002-9425-1163}
+\affiliation{%
+  \institution{ETH AI Center, ETH Zurich, Switzerland}
+  \city{}
+  \state{}
+  \country{}
+}
+
+\repolink{https://github.com/swiss-ai/apertus-probes/}
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+\renewcommand{\shortauthors}{Team 16}
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+  Large language models can be unreliable even on simple multiple choice tasks, and mitigating such errors at inference time remains challenging. This project studies mechanistic error reduction via activation steering on the Apertus family of language models, focusing on datasets where the base model exhibits low accuracy. We evaluate training probes and steering on single datasets and then extend prior work on mixed datasets before comparing the performances against common baselines. Across multiple datasets and models, we observe that linear probes on mid–late layers predict errors well and a single probe trained and evaluated on a mixture of all datasets performs competitively with per-dataset probes. Calibrated MERA-style steering (\cite{hedstrom2025to}) improves accuracy across datasets and models which is consistent with the result in MERA paper.
+\end{abstract}
+
+%%
+%% Keywords. The author(s) should pick words that accurately describe
+%% the work being presented. Separate the keywords with commas.
+\keywords{Large Language Models, Generative Artificial Intelligence, Inference Intervention, Data Science}
+%% A "teaser" image appears between the author and affiliation
+%% information and the body of the document, and typically spans the
+%% page.
+
+% \begin{teaserfigure}
+%   \includegraphics[width=\textwidth]{pictures/llama2_dsl_demo.png}
+%   \caption{Llama 2 chatbot interface \cite{nantasenamat2023llama2chatbot}. Access: \url{https://llama2.streamlit.app/}}
+%   \Description{}
+%   \label{fig:teaser}
+% \end{teaserfigure}
+
+% \received{20 February 2007}
+% \received[revised]{12 March 2009}
+% \received[accepted]{5 June 2009}
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+
+\maketitle
+
+\blfootnote{Author contributions using the CRediT framework \cite{brand2015beyond, devos2024few}:\\
+S1: Methodology, Software, Visualization, Investigation, Writing -
+Original Draft\\
+S2: Methodology, Software, Visualization, Investigation, Writing -
+Original Draft\\
+CG: Conceptualization, Supervision\\
+AC: Supervision, Methodology, Project Administration
+}
+
+% \section{Instructions}
+% This template has been adapted to the course Data Science Lab from the ACM SIG Template \cite{acm_template}. In the following sections you find some instructions for your Data Science Lab report, useful for writing a scientific paper as well. Please also read the preprint notice on the first page, which classifies this work as a preprint and permits this work to be showcased on the ETH Zurich and ETH AI Center platforms, while remaining eligible to be submitted to academic venues, including workshops, conferences, and journals. Also note that the code is to be published on a public repository (e.g., GitHub) with a permissive MIT license attached to it, including copyright by the (code) authors. These things enable the work to be used and contributed to by both academia and industry. It is also important to note that followup work is not restricted to go under the same license and is not required to be open-sourced. The sections that we recommend to include in your report are: Abstract, Introduction, Related Work, Methodology, Experimental Setup, Results, Discussion, Conclusion \& Future Work.  
+
+\section{Introduction}
+Despite the great capabilities of modern language models (LMs), they remain error-prone in many tasks. Failures arise not only in open-ended settings such as reasoning, factual consistency, or planning~\cite{kambhampati2024position}, but also in simple prediction tasks and multiple-choice benchmarks~\cite{math2021neurips, Webson2022, natureZhouSMMFH24}. Reducing such errors remains an open and important research challenge.
+
+Recent work on Mechanistic Error Reduction with Abstention (MERA) \cite{hedstrom2025to} proposes an inference-time framework for mitigating prediction errors by intervening on internal activations using error-estimation probes. Rather than applying fixed steering strengths, MERA calibrates intervention thresholds based on predicted error, and abstains from steering when no reliable improvement can be guaranteed. This results in non-degrading performance while avoiding both understeering and oversteering.
+
+In this work, we apply the MERA framework to the Apertus family of language models, focusing on datasets where Apertus exhibits relatively weak performance according to the Apertus annual evaluation report. Beyond reproducing MERA on a new model family, we extend the framework in two directions. 
+
+First, motivated by evidence that training language models on mixtures of heterogeneous domains improves generalization and robustness~\citep{raffel2020exploring, fedus2021switch, arora2022expert}, we train error-estimation probes on mixed-domain datasets composed of questions spanning multiple tasks and domains as well as cross-training, meaning that we train probes on a dataset and test the prediction of probes on another dataset. This setting reflects realistic deployment scenarios, where a single model must operate across diverse inputs rather than a single narrow benchmark.
+
+Second, we investigate mixed dataset steering, where probes trained on one dataset or domain mixture are used to steer the model on a different target dataset. This allows us to study whether error-related directions learned in representation space generalize across domains, or whether mechanistic steering remains inherently task-specific. 
+
+ 
+
+% \section{Related Work}
+% Existing approaches to error mitigation broadly fall into two categories. The first relies on post-training methods such as fine-tuning or parameter-efficient adaptation~\citep{hu2022lora, reft, lofit2024}. While effective, these methods are computationally expensive, model-specific, and require access to training infrastructure. The second category consists of inference-time techniques, including prompt engineering~\citep{Kojima2022zeroshot} and guided decoding strategies~\citep{YangK21, decode1}, which can be sensitive to prompt format and task context.
+
+% An alternative paradigm is to intervene directly in a model’s internal representations at inference time. Mechanistic steering, also referred to as representation engineering, modifies intermediate activations without altering model weights~\citep{li2023inferencetime, belrose2023leace, fvs2023, sea2024, turner2024steeringlanguagemodelsactivation}. A prominent approach of this idea is contrastive steering~\cite{refusal2024, steeringllama2024}, where a steering direction is constructed from activation differences between paired examples with and without a target concept. This direction is then added to the model’s activations to amplify or suppress the concept~\citep{bell2024}, relying on the assumption that semantic properties are linearly represented in activation space~\citep{elhage2022superposition, tegmark2024geometrytruth, lrh24}.
+
+% A natural question is whether such additive linear steering can be used specifically for error mitigation: can we identify directions corresponding to being wrong and steer away from them? This problem is fundamentally more challenging than steering for semantic attributes such as toxicity or refusal. Errors are heterogeneous, task-dependent, and not tied to a single identifiable concept~\citep{adaptive2024, orgad2024}, which limits the effectiveness of naive linear steering~\citep{belrose2023leace, engels2024languagemodelfeatureslinear}.
+
+% Recent work has highlighted an additional difficulty: most steering methods rely on fixed intervention strengths chosen via ad hoc hyperparameter sweeps~\citep{liu2024incontextvectorsmakingcontext, turner2024steeringlanguagemodelsactivation, conceptors2024, programming2024}. Fixed strengths can lead to understeering on difficult examples and oversteering on easy ones, causing unnecessary degradation~\citep{generalisationSV2024, multiprop2024}. Conditional approaches adjust steering dynamically~\citep{adaptive2024, multiprop2024, taufeeque2024planning, cheng2024linearly}, but they are not explicitly designed for error mitigation.
+
+% The Mechanistic Error Reduction with Abstention (MERA) framework \cite{hedstrom2025to} addresses this issue by calibrating steering strength using error-predictive probes and abstaining when no reliable improvement can be guaranteed. In this project, we reproduce and extend this framework on the Apertus family of language models, with a focus on tasks, or datasets where base model performance is relatively weak. Beyond reproduction, we investigate two extensions that are not explored in the original MERA study.
+
+\section{Related Work}
+Prior approaches to mitigating errors in language models largely rely on either post-training adaptation, such as fine-tuning or parameter-efficient methods~\citep{hu2022lora, reft, lofit2024}, or inference-time techniques including prompt engineering and guided decoding~\citep{Kojima2022zeroshot, YangK21, decode1}. While effective in specific settings, these methods are often computationally costly, sensitive to prompt design, or tightly coupled to individual tasks. An alternative line of work intervenes directly in a model’s internal representations at inference time, commonly referred to as mechanistic steering or representation engineering~\citep{li2023inferencetime, belrose2023leace, fvs2023, sea2024, turner2024steeringlanguagemodelsactivation}. A prominent example is contrastive steering~\citep{refusal2024, steeringllama2024}, which constructs additive steering directions from activation differences between examples with and without a target concept, assuming that such properties are encoded along approximately linear directions in activation space~\citep{elhage2022superposition, tegmark2024geometrytruth}. Applying these techniques to error mitigation is substantially more challenging, as errors are heterogeneous, task-dependent, and not associated with a single semantic concept~\citep{adaptive2024, orgad2024}, limiting the effectiveness of naive linear interventions~\citep{belrose2023leace}. The MERA framework~\citep{hedstrom2025to} addresses this challenge by using error-predictive probes to calibrate steering strength and abstain when improvement is uncertain. Our work builds on this framework by reproducing its results on Apertus models and extending it to mixed-domain and cross-domain probe training and steering.
+
+
+\section{Methodology}
+
+Our work builds on the mechanistic error reduction framework introduced in MERA, while extending it along two key dimensions: (i) applying the method to the Apertus family of language models, and (ii) training and applying error probes across mixed-domain datasets. In this section, we describe the overall pipeline, with particular emphasis on the training of error estimation probes, which form the foundation of the steering mechanism.
+
+\subsection{Overview}
+
+The full pipeline consists of four stages: (1) activation extraction, (2) probe training, (3) steering strength calibration (MERA methods), and (4) inference-time steering. Given a pretrained language model and a labeled dataset, we first cache internal activations at each transformer layer during inference. Linear probes are then trained to predict model error from these activations. At inference time, the learned probe weights define steering directions in activation space, while a calibrated threshold determines when and how strongly steering is applied.
+
+% \subsection{Activation Extraction}
+
+% For each dataset and model, we run the model in inference mode and record hidden-state activations at every transformer layer. Activations are collected at token positions relevant to the prediction task, for example, final token or exact answer positions for multiple-choice datasets. These cached activations serve as  input for probe training.
+
+% \subsection{Error Definition and Targets}
+
+% Following MERA, we define an error signal based on the model’s prediction confidence and correctness. For classification and multiple-choice tasks, this includes both binary correctness labels and continuous error measures derived from softmax probabilities. These targets allow probes to learn a graded notion of error, rather than a purely binary concept of correctness.
+
+\subsection{Problem Setup}
+
+We consider an autoregressive, decoder-only transformer language model $f$ with $L$ layers. Given an input prompt $\mathbf{x} = (x_1, \dots, x_n)$, the model produces a sequence of hidden activations and outputs a probability distribution over the vocabulary $\mathcal{V}$ at each token position. Let $\mathbf{a} \in \mathbb{R}^{(n+m)\times|\mathcal{V}|}$ denote the resulting logits over both input and generated tokens.
+
+At layer $\ell \in \{1,\dots,L\}$ and token position $i$, we denote the residual stream activation by $h_i^{(\ell)}(\mathbf{x})$. We focus on supervised tasks where each input $\mathbf{x}$ is associated with a ground-truth label $y \in \mathcal{V}$ drawn from a finite label set $\mathcal{Y}$.
+
+To extract model predictions, we evaluate logits at a selected token position $k$. We consider two positions: (i) the \emph{last} position, corresponding to the final input token, and (ii) the \emph{exact} position, defined as the first generated token matching any valid label in $\mathcal{Y}$. The latter captures how the model behaves in free-form generation and complements the conventional last-token evaluation.
+
+Given logits $\mathbf{a}_{k}$, the predicted label $\hat{y}$ and its normalized probability are defined as
+\begin{equation}
+\hat{y} = \arg\max_{y \in \mathcal{Y}} \mathbf{a}_{k,\mathrm{idx}(y)}, \quad
+\mathrm{prob}_{\hat{y}} =
+\frac{\mathbf{a}_{k,\mathrm{idx}(\hat{y})}}{\sum_{y \in \mathcal{Y}} \mathbf{a}_{k,\mathrm{idx}(y)}}.
+\end{equation}
+
+We quantify prediction quality using a continuous error signal
+\begin{equation}
+E(\mathbf{a}) = 1 - \mathrm{prob}_{y},
+\end{equation}
+and report task-level accuracy as
+\begin{equation}
+A(\mathbf{a}) = \mathds{1}[\hat{y} = y].
+\end{equation}
+
+This formulation allows us to reason about both discrete correctness and graded confidence-based errors.
+
+\subsection{Activation Steering}
+
+Activation steering modifies the model’s internal representations at inference time by adding a steering vector to selected activations. For a given layer $\ell$ and token position $i$, steering takes the form
+\begin{equation}
+\tilde{h}_i^{(\ell)} = h_i^{(\ell)} + \lambda\, v_i^{(\ell)},
+\end{equation}
+where $v_i^{(\ell)}$ is a steering direction and $\lambda \ge 0$ controls the intervention strength. The steered model $\tilde{f}$ produces output logits $\tilde{\mathbf{a}}$.
+
+Unlike fine-tuning, this intervention does not modify model parameters and can be applied selectively across layers and token positions.
+
+\subsection{Prompt Steering}
+
+Prompt steering represents the simplest form of intervention, where task instructions or biasing cues are injected directly into the input text. While this approach requires no access to internal activations, its effectiveness is highly sensitive to phrasing and prompt length, and it offers limited control over model behavior once generation begins. We include prompt steering as a baseline to contrast internal activation-based methods.
+
+\subsection{Contrastive Steering}
+
+Contrastive steering constructs a steering direction by comparing activations from correct and incorrect model behaviors. Given a dataset $\mathcal{D} = \{(\mathbf{x}_j, y_j)\}_{j=1}^N$, we partition examples into
+\[
+\mathcal{D}_+ = \{j : E(\mathbf{a}_j)=1\}, \quad
+\mathcal{D}_- = \{j : E(\mathbf{a}_j)=0\},
+\]
+where $\mathbf{a}_j = f(\mathbf{x}_j)$.
+
+For each layer and token position, the steering vector is defined as the difference between mean activations:
+\begin{equation}
+v = \mu_+ - \mu_-,
+\end{equation}
+with
+\[
+\mu_+ = \frac{1}{|\mathcal{D}_+|}\sum_{j\in\mathcal{D}_+} h(\mathbf{x}_j), \quad
+\mu_- = \frac{1}{|\mathcal{D}_-|}\sum_{j\in\mathcal{D}_-} h(\mathbf{x}_j).
+\]
+
+This method assumes that the target concept—here, model error—is approximately linearly separable in representation space.
+
+\subsection{Probe-Based Steering}
+
+Probe-based steering generalizes contrastive methods by learning an explicit mapping from activations to error-related signals. We train linear probes of the form
+\begin{equation}
+\hat{p}(h) = w^\top h,
+\end{equation}
+where $h$ denotes activations collected across layers and token positions.
+
+Probes are trained using supervised regression to predict the continuous error $E(\mathbf{a})$. Compared to contrastive steering, probe-based methods leverage all samples rather than relying solely on class means, resulting in more data-efficient and stable steering directions. The probe weights $w$ serve directly as steering vectors.
+
+\subsection{Optimally Calibrated Steering}
+
+A key limitation of prior steering approaches is the use of a fixed intervention strength $\lambda$. In contrast, MERA computes $\lambda$ dynamically based on the probe’s predicted error. Specifically, it solves the optimization problem
+\begin{equation}
+\min_{v} \|v\|_2^2
+\quad \text{subject to} \quad
+\hat{p}(h + v) \le \alpha,
+\end{equation}
+where $\alpha$ is a target error threshold.
+
+For linear probes, this yields a closed-form solution
+\begin{equation}
+v^\star =
+\begin{cases}
+0, & \text{if } w^\top h \le \alpha, \\
+\displaystyle \frac{\alpha - w^\top h}{\|w\|_2^2} w, & \text{otherwise}.
+\end{cases}
+\end{equation}
+
+This formulation introduces two desirable properties: (i) \emph{selective steering}, where activations are modified only when predicted error exceeds the threshold, and (ii) \emph{adaptive strength}, where stronger corrections are applied to more error-prone representations. We refer to this approach as \emph{optimal probe steering}.
+
+% \subsection{Summary of Steering Methods}
+
+% In our experiments, we evaluate the following approaches:
+% \begin{itemize}
+%     \item \textbf{Prompt Steering}: instruction-level intervention via input text.
+%     \item \textbf{Contrastive Steering}: difference-in-means activation steering.
+%     \item \textbf{Additive Probe Steering}: fixed-strength steering using probe weights.
+%     \item \textbf{Optimal Probe Steering}: threshold-calibrated steering with abstention.
+% \end{itemize}
+
+% Together, these methods allow us to study how increasingly principled forms of internal intervention affect model error across tasks, datasets, and domains.
+
+
+
+\section{Experimental Setup}
+
+\paragraph{Models}
+We evaluate both base and instruction-tuned variants of the Apertus and Llama model families. Our primary focus is on Apertus-8B and Apertus-8B-Instruct, motivated by reported performance gaps on reasoning benchmarks in the Apertus technical report. For comparison, we also include Llama-3.1-8B and Llama-3.1-8B-Instruct to contextualize results across families of LLM.
+
+\paragraph{Datasets}
+
+We evaluate mechanistic error reduction on a diverse set of benchmarks spanning reasoning, scientific knowledge, and text classification from Huggingface. Our dataset selection is guided by two criteria: (i) coverage of multiple task domains with multiple choice questions, and (ii) inclusion of benchmarks where the Apertus models perform worse compared to other common text generation LLMs, making error mitigation meaningful and contribute to the development of the Apertus models family.
+
+We include two subsets from the Massive Multitask Language Understanding (MMLU) benchmark: a massive multitask test consisting of multiple-choice questions from various branches of knowledge \cite{hendryckstest2021}, and AI2\_ARC dataset, which include grade-school level multiple-choice science questions. The dataset is partitioned into a challenge set (ARC-Challenge) and an easy set (ARC-Easy), where the former contains only questions answered incorrectly by both a retrieval-based algorithm and a word co-occurrence algorithm \cite{allenai:arc}. Lastly, we take two binary choice questions datasets, which are the SMS Spam dataset, a binary text classification benchmark distinguishing spam from non-spam messages \cite{Almeida2011SpamFiltering}, and the yes-no dataset, a comprehensive collection designed for the fine-tuning of Language Learning Models (LLMs) for specialized tasks in the financial sector. Dataset sizes and domains are summarized in Table~\ref{tab:datasets}.
+
+\begin{table}[t]
+\centering
+\caption{Summary of datasets used in our experiments}
+\label{tab:datasets}
+\begin{tabular}{l l r}
+\toprule
+\textbf{Name} & \textbf{Domain} & \textbf{Number of Samples} \\
+\midrule
+MMLU High School     & MCQA / Reasoning & 3,790 \\
+MMLU Professional   & MCQA / Reasoning & 3,220 \\
+ARC-Challenge       & MCQA / Science   & 2,590 \\
+ARC-Easy            & MCQA / Science   & 4,626 \\
+SMS Spam            & Spam Text        & 5,574 \\
+Yes-No-Finance      & Finance          & 5000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Activation Collection and Probing}
+For each model and dataset, we collect layer-wise hidden activations at both the \emph{last} token and the \emph{exact} answer token position. Linear probes are trained on these activations to predict either binary correctness or continuous error magnitude, depending on the steering method. We report probe quality using RMSE against ground-truth error.
+
+\paragraph{Steering Methods}
+We compare several inference-time steering strategies:
+(i) prompt steering using fixed textual instructions,
+(ii) additive steering with fixed-strength activation addition,
+(iii) contrastive steering using difference-of-means directions, and
+(iv) MERA-style calibrated steering using optimal probes and logistic probes.
+Steering is applied across mid-to-late layers, following probe performance trends.
+
+\paragraph{Evaluation Metrics}
+We evaluate both the quality of error estimation probes and the downstream effectiveness of steering.
+
+\textbf{Probe Evaluation}
+To assess how well a probe predicts model error, we measure the \emph{root mean squared error} (RMSE) between the probe’s predictions and the ground-truth error signal defined in Eq.~\eqref{eq:rmse}. For a set of activations $\{h_i\}_{i=1}^N$ with corresponding errors $\{E_i\}_{i=1}^N$, and probe predictions $\hat{p}(h_i)$, RMSE is defined as
+\begin{equation}
+\mathrm{RMSE} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} \bigl(\hat{p}(h_i) - E_i\bigr)^2}.
+\label{eq:rmse}
+\end{equation}
+Lower RMSE indicates more accurate error estimation, and therefore a more reliable steering signal. We report RMSE across layers and token positions to identify regions of the network that best encode error-related information.
+
+\textbf{Steering Evaluation}
+The main goal is to quantify how steering affects downstream task performance, and in particular whether a steering method improves model accuracy. Directly comparing absolute accuracy differences before and after steering can be misleading, especially when baseline performance is already high: in such cases, small drops in accuracy may appear large in relative terms, while modest gains may be underestimated.
+
+To address this issue, we adopt a normalized metric inspired by prior work on relative performance changes~\citep{burns2023weaktostronggeneralizationelicitingstrong}, which we refer to as the \emph{Steering Performance Impact} (SPI). SPI measures the relative improvement or degradation induced by steering, scaled by the remaining performance headroom of the model. Formally, SPI is defined as
+\begin{equation} \label{eq:spi}
+\mathbf{SPI} =
+\begin{cases}
+\displaystyle
+\frac{\tilde{A}_{\mathcal{D}_{\text{test}}} - A_{\mathcal{D}_{\text{test}}}}{1 - A_{\mathcal{D}_{\text{test}}}},
+& \text{if } \tilde{A}_{\mathcal{D}_{\text{test}}} > A_{\mathcal{D}_{\text{test}}}, \\[10pt]
+\displaystyle
+\frac{\tilde{A}_{\mathcal{D}_{\text{test}}} - A_{\mathcal{D}_{\text{test}}}}{A_{\mathcal{D}_{\text{test}}}},
+& \text{otherwise}.
+\end{cases}
+\end{equation}
+Here, $A_{\mathcal{D}_{\text{test}}}$ denotes the baseline test accuracy, computed as
+\begin{equation}
+A_{\mathcal{D}_{\text{test}}} = \frac{1}{|\mathcal{D}_{\text{test}}|}
+\sum_{i \in \mathcal{D}_{\text{test}}} A(\mathbf{a}_i),
+\label{eq:accuracy_formula}
+\end{equation}
+where $A(\mathbf{a}_i)$ is the per-sample accuracy defined in Eq.~\eqref{eq:accuracy_formula}. The quantity $\tilde{A}_{\mathcal{D}_{\text{test}}}$ is defined analogously using the steered model outputs $\tilde{\mathbf{a}}_i$.
+
+SPI is bounded in the interval $[-1, 1]$, making it comparable across tasks and models with different baseline accuracies. A value of $\mathbf{SPI} = 1$ indicates that steering recovers perfect performance, while $\mathbf{SPI} = -1$ corresponds to complete performance collapse. A value of zero implies that steering has no measurable effect. By focusing on relative changes rather than raw accuracy differences, SPI enables a more robust comparison of steering methods across heterogeneous datasets and model families.
+
+
+
+\section{Results}
+
+% \paragraph{Probe Quality Across Layers}
+% Figure~\ref{fig:all_data} shows that linear probes trained on mid-to-late layers consistently achieve low RMSE across datasets and models. This trend holds for both base and instruction-tuned variants, and for both exact and last token positions. Notably, a single probe trained on a mixed dataset generalizes well across tasks, indicating the presence of a shared, dataset-agnostic error signal in the hidden representations.
+
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=\linewidth]{pictures/linear_all_no_title.png}
+%     \caption{RMSE comparison for linear probes across layers.}
+%     \label{fig:all_data}
+% \end{figure}
+
+% \paragraph{Cross-Dataset Generalization}
+% Figure~\ref{fig:cross-mixed} compares probes trained on individual datasets with probes trained on mixed-domain data. Mixed-dataset probes achieve comparable or lower RMSE when evaluated on held-out tasks, suggesting that error-related representations are not tightly coupled to a single domain.
+
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=0.48\linewidth]{pictures/cross3.png}
+%     \hfill
+%     \includegraphics[width=0.48\linewidth]{pictures/common_both.png}
+%     \caption{Cross-dataset train$\to$test (left) and mixed-dataset (right) RMSE of error probes.}
+%     \label{fig:cross-mixed}
+% \end{figure}
+
+\subsection{Probes Training}
+
+
+% \subsection{Effect of Token Position}
+
+% Probes trained on the \emph{exact} answer token systematically achieve lower RMSE than those trained on the \emph{last} token position. This gap is consistent across datasets and models, with particularly large differences observed on open-ended generation tasks and multi-step reasoning benchmarks. The result suggests that the activation corresponding to the explicitly generated answer provides a cleaner and more direct signal of correctness than the final autoregressive token, which may be influenced by formatting, termination, or auxiliary tokens.
+
+% While last-token probes remain competitive in some settings, especially on classification-style datasets such as SMS Spam, exact-token probing offers more reliable error estimation overall.
+
+\subsubsection{Linear versus Logit Probes}
+
+Linear regression probes outperform logit-based probes across all datasets and layers as seen in Fig~\ref{fig:linear_logit}. The advantage of linear probes is most evident in intermediate and late layers, where logit probes exhibit higher variance and increased RMSE. This difference is particularly visible on ARC-Challenge and MMLU benchmarks, where accurate continuous error estimation is required.
+
+These results indicate that directly regressing onto the error signal is more effective than applying a logistic transformation, especially in settings where probe outputs are later used to determine steering magnitudes. Consequently, linear probes provide a stronger foundation for calibrated steering methods, as can be seen in the steering result.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1\linewidth]{pictures/all_linear.png}
+    \hfill
+    \includegraphics[width=1\linewidth]{pictures/all_logit.png}
+    \caption{Comparison of linear regression probes and logit-based probes for error prediction across layers and datasets. Linear probes consistently achieve lower RMSE and exhibit more stable layer-wise behavior, particularly in intermediate and late layers. Logit probes show higher variance and reduced accuracy, indicating weaker suitability for calibrated steering}
+    \label{fig:linear_logit}
+\end{figure}
+
+\subsubsection{Model Family Differences}
+
+Across datasets, probes trained on Llama-family models achieve lower RMSE than those trained on Apertus-family models, particularly in the base (non-instruct) setting. The gap is most visible on SMS Spam and ARC-Easy, where Llama probes reach near-optimal RMSE in relatively shallow layers.
+
+Within the Apertus family, however, probe behaviour is consistent across checkpoints. Although absolute RMSE values are higher, the layer-wise trends and relative dataset difficulty remain stable. This consistency supports systematic analysis of steering methods within the Apertus family and indicates that probe performance differences are largely attributable to architectural or pretraining differences rather than random variation.
+
+\subsubsection{Cross-Dataset Generalisation}
+
+Cross-dataset evaluation (Fig~\ref{fig:cross_logit}) reveals that error probes exhibit limited but structured generalisation. Probes trained and evaluated on the same dataset consistently outperform cross-dataset probes, confirming that error representations are partially domain-specific. However, the extent of degradation varies substantially across dataset pairs.
+
+Datasets with similar task structures, such as MMLU High School and MMLU Professional, show relatively strong cross-generalisation, particularly in intermediate layers. In contrast, probes trained on SMS Spam generalise poorly to reasoning-heavy datasets, and vice versa, reflecting fundamental differences between linguistic classification and multi-step reasoning tasks.
+
+Probes trained on ARC-Easy generalise well to both ARC-Challenge and MMLU benchmarks, suggesting that its mixture of factual recall and lightweight reasoning produces a more transferable error signal.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pictures/all_cross_exact.png}
+    \caption{Layer-wise RMSE of linear error-estimation probes across transformer layers, evaluated at the exact token position. Curves show probe performance when trained and evaluated on the same dataset as well as under cross-dataset generalization. Error signals are strongest in mid-to-late layers, with notable degradation under cross-domain transfer}
+    \label{fig:cross_logit}
+\end{figure}
+
+\subsubsection{Mixed-Dataset Training}
+
+The observed cross-dataset limitations motivate the use of mixed-dataset probe training. Since no single dataset yields universally transferable error representations, combining datasets from multiple domains provides a mechanism to learn more robust and general error estimators. The results indicate that mixed-domain exposure can reduce sharp generalisation failures observed in single-dataset probes, particularly for cross-steering scenarios.
+
+Training probes on mixed-domain data consistently improves error prediction quality across layers for both model families. As shown in Figure~\ref{fig:mix}, all mixed-training probes achieve RMSE values substantially below the dummy baseline, indicating that the probe captures non-trivial error structure rather than dataset priors alone. For Apertus-Instruct, mixed training reduces RMSE relative to single-dataset probes across most layers, with the strongest gains observed in middle layers, where error signals are most stable. Increasing the probe learning rate from 0.02 to 0.05 leads to uniformly higher RMSE, suggesting that over-fitting to heterogeneous error patterns degrades generalization. Llama-Instruct models exhibit lower RMSE overall, but display a similar trend: mixed training improves mid-layer performance while preserving stability in later layers. Notably, the gap between Llama and Apertus narrows under mixed training, indicating that dataset diversity partially compensates for weaker baseline calibration in Apertus models. 
+
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pictures/all_exact.png}
+    \caption{RMSE of probes trained on a mixture of all datasets and evaluated layer-wise at the exact token position. Mixed-dataset training yields lower RMSE than a dummy baseline and produces flatter, more stable error representations across layers, especially for mid-to-late transformer blocks}
+    \label{fig:mix}
+\end{figure}
+
+\subsection{Steering}
+
+We report steering results using the exact token position across all models and datasets, as this setting most faithfully reflects the model’s free-form generation behavior. Performance is measured using the Steering Performance Impact (SPI), which captures relative gains and degradations while accounting for differing baseline accuracies.
+
+\subsubsection{Linear vs.\ Logit Steering Across Models}
+Figures~\ref{fig:steer_linear_logit} present model-aggregated SPI results for linear and logit-based steering, respectively. A consistent pattern can be seen across architectures: linear MERA achieves positive or neutral SPI on most datasets, while logit-based steering exhibits little to no improvement. In particular, linear MERA delivers substantial gains on SMS-Spam, where SPI values exceed $0.5$ for several model variants, indicating recovery of a large fraction of remaining error. In contrast, performance on reasoning-heavy benchmarks such as MMLU and ARC remains closer to zero, suggesting limited improvement for steering in these settings.
+
+While occasional improvements are observed, notably on SMS-Spam, logit steering's SPI is frequently around 0 or mild negative. This behavior is consistent with the probe training results, where logit probes demonstrate higher RMSE and reduced layer-wise stability, particularly in mid-to-late layers.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1\linewidth]{pictures/all_models_linear_exact.png}
+    \hfill
+    \includegraphics[width=1\linewidth]{pictures/all_models_logit_exact.png}
+    \caption{Steering Performance Impact (SPI) aggregated by model and dataset at the exact token position. Top: linear MERA steering; bottom: logit-based steering. Linear MERA achieves consistent positive or neutral SPI across models, with substantial gains on classification-style tasks such as SMS Spam. Logit-based steering exhibits weaker and less stable improvements}
+    \label{fig:steer_linear_logit}
+\end{figure}
+
+
+\subsubsection{Comparison to Contrastive and Additive Baselines}
+Across all evaluated models, MERA consistently outperforms both vanilla contrastive steering and fixed-strength additive baselines. Contrastive steering is bad as reflected by strongly negative SPI values (e.g., below $-0.8$ on SMS-Spam and MMLU). These failures highlight the sensitivity of contrastive directions to dataset imbalance and the absence of calibrated intervention strength, suggesting that MERA’s calibrated formulation is more reliable as it avoids severe degradation, even when improvements are minor.
+
+
+\paragraph{Dataset- and Model-Specific Effects}
+The dataset-specific view reveals a clear separation between classification-style tasks and reasoning benchmarks. SMS-Spam consistently benefits from steering across all models and probe variants, aligning with the low probe RMSE observed for this dataset. By contrast, MMLU and ARC tasks show limited gains and occasional regressions, particularly under contrastive steering. These trends suggest that error signals in reasoning tasks are more diffuse and less linearly separable, limiting the effectiveness of single-direction additive interventions.
+
+Model-wise, instruction-tuned variants generally exhibit smaller SPI gains than their base counterparts. This is consistent with higher baseline accuracy and reduced residual error in probes training, leaving less room for post-hoc correction. Nevertheless, MERA maintains non-degrading performance, whereas additive baselines frequently induce large negative SPI.
+
+\paragraph{Summary of Individual Steering Configurations}
+Figure~\ref{fig:spi_heatmap_matrix_exact} summarises per-model, per-dataset SPI. MERA's steering method displays a coherent structure, with strong positive responses concentrated on SMS-Spam and mild positive spillovers on adjacent datasets. In contrast, contrastive steering exhibits sharp sign changes across datasets, indicating poor generalisation of the learned direction. Notably, several cells corresponding to cross-domain application of contrastive vectors yield near-maximal negative SPI, underscoring the brittleness of fixed, dataset-specific contrastive means.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pictures/heatmap_exact.png}
+    \caption{SPI heatmap summarising per-model, per-dataset steering performance at the exact token position. Linear MERA displays coherent positive structure, particularly on SMS Spam, whereas contrastive steering exhibits sharp sign changes and severe negative SPI in cross-domain settings}
+    \label{fig:spi_heatmap_matrix_exact}
+\end{figure}
+
+Logit-based MERA shows a flatter heatmap with low-magnitude values, reinforcing the observation that logit probes provide weaker control signals. The sparsity of strong positive regions suggests that successful logit steering requires substantially better-calibrated error predictors than those achievable with simple logistic probes.
+
+\paragraph{Mixed-Dataset Steering}
+The final set of results evaluates steering vectors trained on mixed datasets and applied to individual target benchmarks (Figure~\ref{fig:mix_steering_exact}). Mixed training yields robust positive SPI on SMS-Spam, even when the target dataset constitutes only a fraction of the training mixture. On other benchmarks, mixed steering is largely neutral, rarely outperforming single-dataset MERA but importantly avoiding the severe degradations observed with contrastive methods.
+
+These results align with probe training behaviour: mixed-dataset probes achieve competitive RMSE across layers without overfitting to domain-specific artefacts. As a consequence, the resulting steering directions encode more general error-related structure, trading peak performance for improved robustness. This suggests that mixed training may be preferable when deployment requires cross-domain generalisation or when dataset-specific probes are unreliable.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pictures/mixture_datasets_logit_exact.png}
+    \caption{Steering Performance Impact (SPI) for mixed-dataset steering, where probes trained on a mixture of datasets are applied to individual target benchmarks. Mixed steering achieves robust positive gains on SMS Spam and remains largely neutral on reasoning benchmarks, avoiding the severe degradations observed with contrastive and fixed-strength baselines}
+    \label{fig:mix_steering_exact}
+\end{figure}
+
+
+\section{Conclusion}
+In this work, we reproduced and extended the MERA framework on the Apertus family of language models. We studied probe quality, steering behavior, and generalization across datasets. The results show that linear probes capture error-related signals consistently across layers, while logit-based probes are less stable and less informative. Steering based on calibrated linear probes improves performance on tasks where the base model performs poorly, especially on SMS Spam, and avoids the large performance drops seen with fixed additive or contrastive steering. Training probes on mixed datasets leads to more stable behavior across domains, though the gains are smaller than task-specific steering. Mixed steering shows that cross-domain probes can still produce positive effects, but the improvements are weaker and more task-dependent. Overall, this work suggests that MERA is a reliable and safe method for inference-time error reduction, particularly when base model accuracy is low.
+
+%%
+%% The next two lines define the bibliography style to be used, and
+%% the bibliography file.
+\bibliographystyle{plainnat} % Plain referencing style
+\bibliography{bibliography} % Use the example bibliography file 
+
+
+%%
+%% If your work has an appendix, this is the place to put it.
+\clearpage
+
+
+% \section{Hyperparameters}
+
+% \subsection{Part One}
+
+% Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi
+% malesuada, quam in pulvinar varius, metus nunc fermentum urna, id
+% sollicitudin purus odio sit amet enim. Aliquam ullamcorper eu ipsum
+% vel mollis. Curabitur quis dictum nisl. Phasellus vel semper risus, et
+% lacinia dolor. Integer ultricies commodo sem nec semper.
+
+% \subsection{Part Two}
+
+% Etiam commodo feugiat nisl pulvinar pellentesque. Etiam auctor sodales
+% ligula, non varius nibh pulvinar semper. Suspendisse nec lectus non
+% ipsum convallis congue hendrerit vitae sapien. Donec at laoreet
+% eros. Vivamus non purus placerat, scelerisque diam eu, cursus
+% ante. Etiam aliquam tortor auctor efficitur mattis.
+
+% \section{Proofs}
+
+% Nam id fermentum dui. Suspendisse sagittis tortor a nulla mollis, in
+% pulvinar ex pretium. Sed interdum orci quis metus euismod, et sagittis
+% enim maximus. Vestibulum gravida massa ut felis suscipit
+% congue. Quisque mattis elit a risus ultrices commodo venenatis eget
+% dui. Etiam sagittis eleifend elementum.
+
+% Nam interdum magna at lectus dignissim, ac dignissim lorem
+% rhoncus. Maecenas eu arcu ac neque placerat aliquam. Nunc pulvinar
+% massa et mattis lacinia.
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-sigconf.tex'.

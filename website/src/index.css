@@ -1,0 +1,204 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 20% 98%;
+    --foreground: 220 20% 14%;
+
+    --card: 40 15% 96%;
+    --card-foreground: 220 20% 14%;
+
+    --popover: 40 20% 98%;
+    --popover-foreground: 220 20% 14%;
+
+    --primary: 220 60% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 15% 93%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 40 10% 92%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 16 70% 52%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 12% 88%;
+    --input: 40 12% 88%;
+    --ring: 220 60% 35%;
+
+    --radius: 0.375rem;
+
+    /* Custom tokens */
+    --figure-bg: 40 20% 99%;
+    --figure-border: 40 12% 90%;
+    --figure-caption: 220 10% 40%;
+    --toc-active: 220 60% 35%;
+    --toc-hover: 40 15% 94%;
+    --progress-bar: 220 60% 35%;
+    --code-bg: 220 15% 96%;
+    --highlight: 48 95% 76%;
+    --math-bg: 40 20% 97%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    @apply font-semibold tracking-tight;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
+
+@layer components {
+  .article-prose {
+    @apply text-lg leading-relaxed;
+    color: hsl(var(--foreground));
+  }
+
+  .article-prose p {
+    @apply mb-5;
+  }
+
+  .article-prose h2 {
+    @apply text-2xl md:text-3xl font-bold mt-12 mb-4 pb-2;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .article-prose h3 {
+    @apply text-xl md:text-2xl font-semibold mt-8 mb-3;
+  }
+
+  .article-prose h4 {
+    @apply text-lg font-semibold mt-6 mb-2;
+  }
+
+  .article-prose ul, .article-prose ol {
+    @apply ml-6 mb-5 space-y-1;
+  }
+
+  .article-prose ul {
+    @apply list-disc;
+  }
+
+  .article-prose ol {
+    @apply list-decimal;
+  }
+
+  .article-prose li {
+    @apply text-base leading-relaxed;
+  }
+
+  .article-prose strong {
+    @apply font-semibold;
+  }
+
+  .article-prose em {
+    @apply italic;
+  }
+
+  .article-prose blockquote {
+    @apply border-l-4 pl-4 py-1 my-4 italic;
+    border-color: hsl(var(--primary));
+    background: hsl(var(--math-bg));
+  }
+
+  .figure-card {
+    @apply rounded-lg border p-4 md:p-6 my-8;
+    background: hsl(var(--figure-bg));
+    border-color: hsl(var(--figure-border));
+  }
+
+  .figure-label {
+    font-family: 'Inter', sans-serif;
+    @apply text-sm font-semibold uppercase tracking-wider mb-2;
+    color: hsl(var(--primary));
+  }
+
+  .figure-caption {
+    @apply text-sm mt-3 leading-relaxed;
+    color: hsl(var(--figure-caption));
+  }
+
+  .figure-interpretation {
+    @apply text-sm mt-3 pl-4 border-l-2;
+    border-color: hsl(var(--accent));
+    color: hsl(var(--muted-foreground));
+  }
+
+  .toc-link {
+    font-family: 'Inter', sans-serif;
+    @apply block text-sm py-1.5 px-3 rounded transition-colors;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .toc-link:hover {
+    background: hsl(var(--toc-hover));
+    color: hsl(var(--foreground));
+  }
+
+  .toc-link-active {
+    color: hsl(var(--toc-active));
+    font-weight: 600;
+    background: hsl(var(--toc-hover));
+  }
+
+  .math-block {
+    @apply py-3 px-4 my-4 rounded text-center overflow-x-auto;
+    background: hsl(var(--math-bg));
+    font-family: 'JetBrains Mono', monospace;
+    @apply text-sm;
+  }
+
+  .download-btn {
+    font-family: 'Inter', sans-serif;
+    @apply inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border transition-colors cursor-pointer;
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border));
+  }
+
+  .download-btn:hover {
+    background: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+  }
+
+  .progress-bar {
+    @apply fixed top-0 left-0 h-0.5 z-50 transition-all duration-150;
+    background: hsl(var(--progress-bar));
+  }
+
+  /* Scale down KaTeX formulas to match text size better */
+  .katex {
+    font-size: 1.05em !important;
+  }
+}
