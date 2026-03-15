@@ -1,4 +1,5 @@
 import { useEffect, useState, ReactNode } from "react";
+import { withBasePath } from "@/lib/paths";
 
 interface JsonChartLoaderProps<T> {
   path: string;
@@ -14,13 +15,14 @@ export default function JsonChartLoader<T>({
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const resolvedPath = withBasePath(path);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetch(path)
+    fetch(resolvedPath)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
@@ -44,7 +46,7 @@ export default function JsonChartLoader<T>({
     return () => {
       cancelled = true;
     };
-  }, [path, validate]);
+  }, [resolvedPath, validate]);
 
   if (loading) {
     return (
@@ -60,7 +62,7 @@ export default function JsonChartLoader<T>({
         <p className="font-sans text-sm font-medium text-muted-foreground">
           Required data file not found
         </p>
-        <p className="font-mono text-xs text-muted-foreground mt-1">{path}</p>
+        <p className="font-mono text-xs text-muted-foreground mt-1">{resolvedPath}</p>
         {error && (
           <p className="font-sans text-xs text-destructive mt-2">
             Error: {error}

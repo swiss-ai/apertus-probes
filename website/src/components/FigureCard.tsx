@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Download } from "lucide-react";
+import { withBasePath } from "@/lib/paths";
 
 interface FigureCardProps {
   id?: string;
@@ -24,8 +25,9 @@ export default function FigureCard({
 }: FigureCardProps) {
   const handleDownload = () => {
     if (!dataPath) return;
+    const resolvedDataPath = withBasePath(dataPath);
     const a = document.createElement("a");
-    a.href = dataPath;
+    a.href = resolvedDataPath;
     a.download = dataPath.split("/").pop() || "data.json";
     a.click();
   };
